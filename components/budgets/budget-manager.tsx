@@ -32,12 +32,7 @@ type FormState = {
   amount: string;
 };
 
-const emptyForm: FormState = {
-  category: "",
-  amount: "",
-};
-
-const fallbackCategories = [
+const categories = [
   "Food",
   "Transportation",
   "School",
@@ -49,6 +44,26 @@ const fallbackCategories = [
   "Health",
   "Other",
 ];
+
+const monthOptions = [
+  { value: 1, label: "January" },
+  { value: 2, label: "February" },
+  { value: 3, label: "March" },
+  { value: 4, label: "April" },
+  { value: 5, label: "May" },
+  { value: 6, label: "June" },
+  { value: 7, label: "July" },
+  { value: 8, label: "August" },
+  { value: 9, label: "September" },
+  { value: 10, label: "October" },
+  { value: 11, label: "November" },
+  { value: 12, label: "December" },
+];
+
+const emptyForm: FormState = {
+  category: categories[0],
+  amount: "",
+};
 
 function formatMoney(value: number | string) {
   return new Intl.NumberFormat("en-PH", {
@@ -73,24 +88,19 @@ function getMonthRange(month: number, year: number) {
   };
 }
 
-function toMonthInputValue(month: number, year: number) {
-  return `${year}-${String(month).padStart(2, "0")}`;
-}
-
-function fromMonthInputValue(value: string) {
-  const [year, month] = value.split("-").map(Number);
-
-  return {
-    month,
-    year,
-  };
-}
-
 function formatMonth(month: number, year: number) {
   return new Intl.DateTimeFormat("en-PH", {
     month: "long",
     year: "numeric",
   }).format(new Date(year, month - 1, 1));
+}
+
+function normalizeCategory(category: string | null | undefined) {
+  return category?.trim() || "Uncategorized";
+}
+
+function getCurrentYear() {
+  return new Date().getFullYear();
 }
 
 function getStatusDetails(percentage: number) {
@@ -129,36 +139,25 @@ function getStatusDetails(percentage: number) {
   };
 }
 
-function normalizeCategory(category: string | null) {
-  return category?.trim() || "Uncategorized";
-}
-
 export default function BudgetManager({
   userId,
   initialBudgets,
   initialTransactions,
   initialMonth,
   initialYear,
-  initialCategoryOptions,
 }: {
   userId: string;
   initialBudgets: Budget[];
   initialTransactions: BudgetTransaction[];
   initialMonth: number;
   initialYear: number;
-  initialCategoryOptions: string[];
+  initialCategoryOptions?: string[];
 }) {
   const router = useRouter();
 
   const [budgets, setBudgets] = useState<Budget[]>(initialBudgets);
   const [transactions, setTransactions] =
     useState<BudgetTransaction[]>(initialTransactions);
-
-  const [categoryOptions, setCategoryOptions] = useState<string[]>(
-    initialCategoryOptions.length > 0
-      ? initialCategoryOptions
-      : fallbackCategories
-  );
 
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);
   const [selectedYear, setSelectedYear] = useState(initialYear);
@@ -173,12 +172,30 @@ export default function BudgetManager({
   const [form, setForm] = useState<FormState>(emptyForm);
   const [loading, setLoading] = useState(false);
 
+  const currentYear = getCurrentYear();
+
+  const yearOptions = useMemo(() => {
+    const years = new Set<number>();
+
+    years.add(currentYear);
+    years.add(initialYear);
+    years.add(selectedYear);
+
+    budgets.forEach((budget) => years.add(Number(budget.year)));
+
+    return Array.from(years).sort((a, b) => b - a);
+  }, [budgets, currentYear, initialYear, selectedYear]);
+
   const budgetRows = useMemo(() => {
     return budgets.map((budget) => {
       const category = normalizeCategory(budget.category);
 
       const used = transactions
-        .filter((transaction) => transaction.category === category)
+        .filter(
+          (transaction) =>
+            transaction.type === "expense" &&
+            normalizeCategory(transaction.category) === category
+        )
         .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
 
       const amount = Number(budget.amount);
@@ -232,6 +249,13 @@ export default function BudgetManager({
   async function loadMonth(month: number, year: number) {
     setLoading(true);
 
+    const toastId = toast.loading("Loading budgets...", {
+      description: `Checking budgets and expenses for ${formatMonth(
+        month,
+        year
+      )}.`,
+    });
+
     const { monthStart, monthEnd } = getMonthRange(month, year);
 
     const { data: budgetData, error: budgetError } = await supabase
@@ -244,6 +268,7 @@ export default function BudgetManager({
 
     if (budgetError) {
       toast.error("Failed to load budgets", {
+        id: toastId,
         description: budgetError.message,
       });
       setLoading(false);
@@ -260,56 +285,32 @@ export default function BudgetManager({
 
     if (transactionError) {
       toast.error("Failed to load expenses", {
+        id: toastId,
         description: transactionError.message,
       });
       setLoading(false);
       return;
     }
 
-    const { data: categoryData, error: categoryError } = await supabase
-      .from("transactions")
-      .select("category")
-      .eq("user_id", userId)
-      .order("category", { ascending: true });
-
-    if (categoryError) {
-      toast.error("Failed to load categories", {
-        description: categoryError.message,
-      });
-      setLoading(false);
-      return;
-    }
-
-    const nextBudgets = (budgetData ?? []) as Budget[];
-    const nextTransactions = (transactionData ?? []) as BudgetTransaction[];
-
-    const nextCategoryOptions = Array.from(
-      new Set(
-        [
-          ...(categoryData ?? []).map((item) => item.category),
-          ...nextBudgets.map((item) => item.category),
-        ]
-          .filter(Boolean)
-          .map((category) => String(category))
-      )
-    ).sort((a, b) => a.localeCompare(b));
-
-    setBudgets(nextBudgets);
-    setTransactions(nextTransactions);
-    setCategoryOptions(
-      nextCategoryOptions.length > 0 ? nextCategoryOptions : fallbackCategories
-    );
+    setBudgets((budgetData ?? []) as Budget[]);
+    setTransactions((transactionData ?? []) as BudgetTransaction[]);
     setSelectedMonth(month);
     setSelectedYear(year);
     setSearch("");
     setStatusFilter("all");
+
+    toast.success("Budgets loaded", {
+      id: toastId,
+      description: `${formatMonth(month, year)} budget data is ready.`,
+    });
+
     setLoading(false);
   }
 
   function openAddModal() {
     setEditingBudget(null);
     setForm({
-      category: categoryOptions[0] ?? "",
+      category: categories[0],
       amount: "",
     });
     setModalOpen(true);
@@ -324,6 +325,14 @@ export default function BudgetManager({
     setModalOpen(true);
   }
 
+  function closeModal() {
+    if (loading) return;
+
+    setModalOpen(false);
+    setEditingBudget(null);
+    setForm(emptyForm);
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -332,7 +341,14 @@ export default function BudgetManager({
 
     if (!category) {
       toast.error("Missing category", {
-        description: "Please select or enter a budget category.",
+        description: "Please select a budget category.",
+      });
+      return;
+    }
+
+    if (!categories.includes(category)) {
+      toast.error("Invalid category", {
+        description: "Please choose a category from the dropdown.",
       });
       return;
     }
@@ -344,29 +360,28 @@ export default function BudgetManager({
       return;
     }
 
+    const duplicateBudget = budgets.find(
+      (budget) =>
+        budget.id !== editingBudget?.id &&
+        normalizeCategory(budget.category).toLowerCase() ===
+          category.toLowerCase() &&
+        budget.month === selectedMonth &&
+        budget.year === selectedYear
+    );
+
+    if (duplicateBudget) {
+      toast.error("Budget already exists", {
+        description: `${category} already has a budget for ${formatMonth(
+          selectedMonth,
+          selectedYear
+        )}.`,
+      });
+      return;
+    }
+
     setLoading(true);
 
     if (editingBudget) {
-      const duplicateBudget = budgets.find(
-        (budget) =>
-          budget.id !== editingBudget.id &&
-          normalizeCategory(budget.category).toLowerCase() ===
-            category.toLowerCase() &&
-          budget.month === selectedMonth &&
-          budget.year === selectedYear
-      );
-
-      if (duplicateBudget) {
-        toast.error("Budget already exists", {
-          description: `${category} already has a budget for ${formatMonth(
-            selectedMonth,
-            selectedYear
-          )}.`,
-        });
-        setLoading(false);
-        return;
-      }
-
       const { data, error } = await supabase
         .from("budgets")
         .update({
@@ -400,35 +415,13 @@ export default function BudgetManager({
           )
       );
 
-      setCategoryOptions((current) =>
-        Array.from(new Set([...current, category])).sort((a, b) =>
-          a.localeCompare(b)
-        )
-      );
-
       toast.success("Budget updated", {
-        description: `${category} budget was updated successfully.`,
+        description: `${category} budget was updated for ${formatMonth(
+          selectedMonth,
+          selectedYear
+        )}.`,
       });
     } else {
-      const existingBudget = budgets.find(
-        (budget) =>
-          normalizeCategory(budget.category).toLowerCase() ===
-            category.toLowerCase() &&
-          budget.month === selectedMonth &&
-          budget.year === selectedYear
-      );
-
-      if (existingBudget) {
-        toast.error("Budget already exists", {
-          description: `${category} already has a budget for ${formatMonth(
-            selectedMonth,
-            selectedYear
-          )}.`,
-        });
-        setLoading(false);
-        return;
-      }
-
       const { data, error } = await supabase
         .from("budgets")
         .insert({
@@ -454,12 +447,6 @@ export default function BudgetManager({
           normalizeCategory(a.category).localeCompare(
             normalizeCategory(b.category)
           )
-        )
-      );
-
-      setCategoryOptions((current) =>
-        Array.from(new Set([...current, category])).sort((a, b) =>
-          a.localeCompare(b)
         )
       );
 
@@ -525,8 +512,8 @@ export default function BudgetManager({
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Set monthly spending limits and monitor category-based expenses from
-            your transactions.
+            Set planned monthly spending limits. Expenses from Transactions will
+            be compared against these limits.
           </p>
         </div>
 
@@ -566,7 +553,10 @@ export default function BudgetManager({
         <SummaryCard
           title="Total Budget"
           value={formatMoney(totalBudget)}
-          helper={`Limits for ${formatMonth(selectedMonth, selectedYear)}`}
+          helper={`Planned limits for ${formatMonth(
+            selectedMonth,
+            selectedYear
+          )}`}
           icon={<Target className="h-5 w-5" />}
         />
 
@@ -603,19 +593,34 @@ export default function BudgetManager({
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <input
-              type="month"
-              value={toMonthInputValue(selectedMonth, selectedYear)}
-              onChange={(e) => {
-                const { month, year } = fromMonthInputValue(e.target.value);
-                loadMonth(month, year);
-              }}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <select
+              value={selectedMonth}
+              onChange={(e) => loadMonth(Number(e.target.value), selectedYear)}
               disabled={loading}
               className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
-            />
+            >
+              {monthOptions.map((month) => (
+                <option key={month.value} value={month.value}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
 
-            <div className="relative">
+            <select
+              value={selectedYear}
+              onChange={(e) => loadMonth(selectedMonth, Number(e.target.value))}
+              disabled={loading}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
+            >
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+
+            <div className="relative sm:col-span-2 lg:col-span-1">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
                 value={search}
@@ -664,12 +669,11 @@ export default function BudgetManager({
                 <Target className="h-6 w-6" />
               </div>
 
-              <h3 className="mt-4 font-semibold text-white">
-                No budgets found
-              </h3>
+              <h3 className="mt-4 font-semibold text-white">No budgets set</h3>
 
               <p className="mt-1 text-sm text-slate-400">
-                Create a category budget or adjust your filters.
+                Create a planned budget first. Transactions can be added before
+                or after.
               </p>
             </div>
           ) : (
@@ -783,15 +787,10 @@ export default function BudgetManager({
           title={editingBudget ? "Edit Budget" : "Add Budget"}
           form={form}
           setForm={setForm}
-          categoryOptions={categoryOptions}
           selectedMonth={selectedMonth}
           selectedYear={selectedYear}
           loading={loading}
-          onClose={() => {
-            setModalOpen(false);
-            setEditingBudget(null);
-            setForm(emptyForm);
-          }}
+          onClose={closeModal}
           onSubmit={handleSubmit}
         />
       )}
@@ -802,7 +801,9 @@ export default function BudgetManager({
           selectedMonth={selectedMonth}
           selectedYear={selectedYear}
           loading={loading}
-          onClose={() => setDeleteTarget(null)}
+          onClose={() => {
+            if (!loading) setDeleteTarget(null);
+          }}
           onDelete={handleDelete}
         />
       )}
@@ -852,7 +853,6 @@ function BudgetModal({
   title,
   form,
   setForm,
-  categoryOptions,
   selectedMonth,
   selectedYear,
   loading,
@@ -862,7 +862,6 @@ function BudgetModal({
   title: string;
   form: FormState;
   setForm: Dispatch<SetStateAction<FormState>>;
-  categoryOptions: string[];
   selectedMonth: number;
   selectedYear: number;
   loading: boolean;
@@ -876,7 +875,7 @@ function BudgetModal({
           <div>
             <h2 className="text-xl font-bold text-white">{title}</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Set a spending limit for {formatMonth(selectedMonth, selectedYear)}.
+              Set a planned limit for {formatMonth(selectedMonth, selectedYear)}.
             </p>
           </div>
 
@@ -897,8 +896,7 @@ function BudgetModal({
               Category
             </label>
 
-            <input
-              list="budget-category-options"
+            <select
               value={form.category}
               onChange={(e) =>
                 setForm((current) => ({
@@ -906,19 +904,20 @@ function BudgetModal({
                   category: e.target.value,
                 }))
               }
-              placeholder="Select or type category"
               required
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-            />
-
-            <datalist id="budget-category-options">
-              {categoryOptions.map((category) => (
-                <option key={category} value={category} />
+              disabled={loading}
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
+            >
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
               ))}
-            </datalist>
+            </select>
 
             <p className="mt-2 text-xs text-slate-500">
-              Categories come from your existing transaction and budget records.
+              Budgets use the same categories as Transactions for accurate
+              matching.
             </p>
           </div>
 
@@ -940,13 +939,14 @@ function BudgetModal({
               }
               placeholder="0.00"
               required
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+              disabled={loading}
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
             />
           </div>
 
           <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-200">
-            Budget progress is calculated from expense transactions in the same
-            category. Warning starts at 80%, and Exceeded starts at 100%.
+            You can create a budget before adding transactions. Later expense
+            transactions in the same category will update this budget progress.
           </div>
 
           <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
@@ -1007,6 +1007,11 @@ function DeleteBudgetModal({
             {formatMoney(budget.amount)}
           </span>{" "}
           for {formatMonth(selectedMonth, selectedYear)}.
+        </p>
+
+        <p className="mt-3 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-sm text-yellow-200">
+          This will only delete the budget limit. Your transaction records will
+          stay unchanged.
         </p>
 
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

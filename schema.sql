@@ -204,3 +204,96 @@ $$;
 
 alter table public.budgets
 alter column category set not null;
+
+
+create policy "Users can upload their own avatar"
+on storage.objects
+for insert
+with check (
+  bucket_id = 'avatars'
+  and auth.uid()::text = (storage.foldername(name))[1]
+);
+
+create policy "Users can update their own avatar"
+on storage.objects
+for update
+using (
+  bucket_id = 'avatars'
+  and auth.uid()::text = (storage.foldername(name))[1]
+)
+with check (
+  bucket_id = 'avatars'
+  and auth.uid()::text = (storage.foldername(name))[1]
+);
+
+create policy "Users can delete their own avatar"
+on storage.objects
+for delete
+using (
+  bucket_id = 'avatars'
+  and auth.uid()::text = (storage.foldername(name))[1]
+);
+
+create policy "Avatar images are publicly readable"
+on storage.objects
+for select
+using (bucket_id = 'avatars');
+
+alter table public.profiles
+add column if not exists updated_at timestamp with time zone default now();
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists set_profiles_updated_at on public.profiles;
+
+create trigger set_profiles_updated_at
+before update on public.profiles
+for each row
+execute function public.set_updated_at();
+
+
+drop policy if exists "Avatar images are publicly readable" on storage.objects;
+drop policy if exists "Users can upload their own avatar" on storage.objects;
+drop policy if exists "Users can update their own avatar" on storage.objects;
+drop policy if exists "Users can delete their own avatar" on storage.objects;
+
+create policy "Avatar images are publicly readable"
+on storage.objects
+for select
+using (bucket_id = 'avatars');
+
+create policy "Users can upload their own avatar"
+on storage.objects
+for insert
+with check (
+  bucket_id = 'avatars'
+  and auth.uid()::text = (storage.foldername(name))[1]
+);
+
+create policy "Users can update their own avatar"
+on storage.objects
+for update
+using (
+  bucket_id = 'avatars'
+  and auth.uid()::text = (storage.foldername(name))[1]
+)
+with check (
+  bucket_id = 'avatars'
+  and auth.uid()::text = (storage.foldername(name))[1]
+);
+
+create policy "Users can delete their own avatar"
+on storage.objects
+for delete
+using (
+  bucket_id = 'avatars'
+  and auth.uid()::text = (storage.foldername(name))[1]
+);

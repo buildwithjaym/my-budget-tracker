@@ -16,18 +16,19 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-const categories = [
+const expenseCategories = [
   "Food",
   "Transportation",
   "School",
   "Bills",
   "Shopping",
-  "Allowance",
-  "Salary",
-  "Savings",
   "Health",
   "Other",
 ];
+
+const incomeSources = ["Monthly Salary", "Allowance", "Other Income"];
+
+const allCategories = [...expenseCategories, ...incomeSources];
 
 type FormState = {
   type: "income" | "expense";
@@ -40,7 +41,7 @@ type FormState = {
 const emptyForm: FormState = {
   type: "expense",
   amount: "",
-  category: "Food",
+  category: expenseCategories[0],
   note: "",
   transaction_date: new Date().toISOString().slice(0, 10),
 };
@@ -59,6 +60,10 @@ function formatDate(value: string) {
     day: "numeric",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function getTodayDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export default function TransactionManager({
@@ -95,7 +100,8 @@ export default function TransactionManager({
       const matchesSearch =
         transaction.category.toLowerCase().includes(searchValue) ||
         transaction.note?.toLowerCase().includes(searchValue) ||
-        String(transaction.amount).includes(searchValue);
+        String(transaction.amount).includes(searchValue) ||
+        transaction.transaction_date.includes(searchValue);
 
       const matchesType =
         typeFilter === "all" || transaction.type === typeFilter;
@@ -119,7 +125,13 @@ export default function TransactionManager({
 
   function openAddModal() {
     setEditingTransaction(null);
-    setForm(emptyForm);
+    setForm({
+      type: "expense",
+      amount: "",
+      category: expenseCategories[0],
+      note: "",
+      transaction_date: getTodayDate(),
+    });
     setModalOpen(true);
   }
 
@@ -135,10 +147,27 @@ export default function TransactionManager({
     setModalOpen(true);
   }
 
+  function closeModal() {
+    if (loading) return;
+
+    setModalOpen(false);
+    setEditingTransaction(null);
+    setForm(emptyForm);
+  }
+
+  function handleTypeChange(type: "income" | "expense") {
+    setForm((current) => ({
+      ...current,
+      type,
+      category: type === "income" ? incomeSources[0] : expenseCategories[0],
+    }));
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     const amount = Number(form.amount);
+    const category = form.category.trim();
 
     if (!amount || amount <= 0) {
       toast.error("Invalid amount", {
@@ -147,9 +176,22 @@ export default function TransactionManager({
       return;
     }
 
-    if (!form.category.trim()) {
+    if (!category) {
       toast.error("Missing category", {
-        description: "Please select a category.",
+        description:
+          form.type === "income"
+            ? "Please select an income source."
+            : "Please select an expense category.",
+      });
+      return;
+    }
+
+    const validCategories =
+      form.type === "income" ? incomeSources : expenseCategories;
+
+    if (!validCategories.includes(category)) {
+      toast.error("Invalid category", {
+        description: "Please choose a valid option from the dropdown.",
       });
       return;
     }
@@ -169,7 +211,7 @@ export default function TransactionManager({
         .update({
           type: form.type,
           amount,
-          category: form.category,
+          category,
           note: form.note.trim() || null,
           transaction_date: form.transaction_date,
         })
@@ -193,7 +235,10 @@ export default function TransactionManager({
       );
 
       toast.success("Transaction updated", {
-        description: `${form.category} transaction was updated successfully.`,
+        description:
+          form.type === "expense"
+            ? `${category} expense was updated. Budget progress will reflect this.`
+            : `${category} income was updated successfully.`,
       });
     } else {
       const { data, error } = await supabase
@@ -202,7 +247,7 @@ export default function TransactionManager({
           user_id: userId,
           type: form.type,
           amount,
-          category: form.category,
+          category,
           note: form.note.trim() || null,
           transaction_date: form.transaction_date,
         })
@@ -220,7 +265,10 @@ export default function TransactionManager({
       setTransactions((current) => [data as Transaction, ...current]);
 
       toast.success("Transaction added", {
-        description: `${form.category} transaction was added successfully.`,
+        description:
+          form.type === "expense"
+            ? `${category} expense was added. Budget progress will update.`
+            : `${category} income was added successfully.`,
       });
     }
 
@@ -255,7 +303,10 @@ export default function TransactionManager({
     );
 
     toast.success("Transaction deleted", {
-      description: `${deleteTarget.category} transaction was removed successfully.`,
+      description:
+        deleteTarget.type === "expense"
+          ? `${deleteTarget.category} expense was removed. Budget progress will update.`
+          : `${deleteTarget.category} income was removed successfully.`,
     });
 
     setLoading(false);
@@ -276,7 +327,8 @@ export default function TransactionManager({
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Add, edit, delete, categorize, and organize your financial records.
+            Record actual income and expenses. Only expense transactions are
+            used to calculate budget progress.
           </p>
         </div>
 
@@ -294,14 +346,14 @@ export default function TransactionManager({
         <SummaryCard
           title="Total Income"
           value={formatMoney(totalIncome)}
-          helper="All income records"
+          helper="Income sources only"
           icon={<ArrowDownLeft className="h-5 w-5" />}
         />
 
         <SummaryCard
           title="Total Expenses"
           value={formatMoney(totalExpenses)}
-          helper="All expense records"
+          helper="Expenses used by budgets"
           icon={<ArrowUpRight className="h-5 w-5" />}
         />
 
@@ -331,7 +383,7 @@ export default function TransactionManager({
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search category, note, or amount..."
+                placeholder="Search category, note, amount, or date..."
                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-10 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 lg:w-80"
               />
             </div>
@@ -354,7 +406,7 @@ export default function TransactionManager({
               className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
             >
               <option value="all">All Categories</option>
-              {categories.map((category) => (
+              {allCategories.map((category) => (
                 <option key={category} value={category}>
                   {category}
                 </option>
@@ -366,7 +418,7 @@ export default function TransactionManager({
         <div className="overflow-hidden rounded-2xl border border-white/10">
           <div className="hidden grid-cols-7 bg-white/5 px-4 py-3 text-xs font-medium uppercase tracking-wide text-slate-400 md:grid">
             <span>Date</span>
-            <span>Category</span>
+            <span>Category / Source</span>
             <span>Type</span>
             <span className="col-span-2">Note</span>
             <span className="text-right">Amount</span>
@@ -404,7 +456,7 @@ export default function TransactionManager({
 
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
-                    Category
+                    Category / Source
                   </p>
                   <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
                     {transaction.category}
@@ -488,12 +540,9 @@ export default function TransactionManager({
           form={form}
           setForm={setForm}
           loading={loading}
-          onClose={() => {
-            setModalOpen(false);
-            setEditingTransaction(null);
-            setForm(emptyForm);
-          }}
+          onClose={closeModal}
           onSubmit={handleSubmit}
+          onTypeChange={handleTypeChange}
         />
       )}
 
@@ -501,7 +550,9 @@ export default function TransactionManager({
         <DeleteModal
           transaction={deleteTarget}
           loading={loading}
-          onClose={() => setDeleteTarget(null)}
+          onClose={() => {
+            if (!loading) setDeleteTarget(null);
+          }}
           onDelete={handleDelete}
         />
       )}
@@ -540,6 +591,7 @@ function TransactionModal({
   loading,
   onClose,
   onSubmit,
+  onTypeChange,
 }: {
   title: string;
   form: FormState;
@@ -547,7 +599,11 @@ function TransactionModal({
   loading: boolean;
   onClose: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  onTypeChange: (type: "income" | "expense") => void;
 }) {
+  const activeCategories =
+    form.type === "income" ? incomeSources : expenseCategories;
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
@@ -555,7 +611,9 @@ function TransactionModal({
           <div>
             <h2 className="text-xl font-bold text-white">{title}</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Fill in the transaction details below.
+              {form.type === "income"
+                ? "Record your monthly salary, allowance, or other income."
+                : "Record actual expenses that will be used by Budgets."}
             </p>
           </div>
 
@@ -574,10 +632,9 @@ function TransactionModal({
           <div className="grid grid-cols-2 gap-3 rounded-2xl bg-white/5 p-1">
             <button
               type="button"
-              onClick={() =>
-                setForm((current) => ({ ...current, type: "income" }))
-              }
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
+              onClick={() => onTypeChange("income")}
+              disabled={loading}
+              className={`rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60 ${
                 form.type === "income"
                   ? "bg-emerald-500 text-white"
                   : "text-slate-400 hover:text-white"
@@ -588,10 +645,9 @@ function TransactionModal({
 
             <button
               type="button"
-              onClick={() =>
-                setForm((current) => ({ ...current, type: "expense" }))
-              }
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
+              onClick={() => onTypeChange("expense")}
+              disabled={loading}
+              className={`rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60 ${
                 form.type === "expense"
                   ? "bg-red-500 text-white"
                   : "text-slate-400 hover:text-white"
@@ -613,14 +669,16 @@ function TransactionModal({
               }
               placeholder="0.00"
               required
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+              disabled={loading}
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
             />
           </div>
 
           <div>
             <label className="text-sm font-medium text-slate-300">
-              Category
+              {form.type === "income" ? "Income Source" : "Expense Category"}
             </label>
+
             <select
               value={form.category}
               onChange={(e) =>
@@ -630,14 +688,21 @@ function TransactionModal({
                 }))
               }
               required
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+              disabled={loading}
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
             >
-              {categories.map((category) => (
+              {activeCategories.map((category) => (
                 <option key={category} value={category}>
                   {category}
                 </option>
               ))}
             </select>
+
+            <p className="mt-2 text-xs text-slate-500">
+              {form.type === "income"
+                ? "Income records affect total income and net balance only."
+                : "Expense records are matched with Budgets to calculate spending progress."}
+            </p>
           </div>
 
           <div>
@@ -652,7 +717,8 @@ function TransactionModal({
                 }))
               }
               required
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+              disabled={loading}
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
             />
           </div>
 
@@ -665,8 +731,21 @@ function TransactionModal({
               }
               placeholder="Optional note"
               rows={3}
-              className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+              disabled={loading}
+              className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
             />
+          </div>
+
+          <div
+            className={`rounded-2xl border p-4 text-sm ${
+              form.type === "income"
+                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                : "border-yellow-500/20 bg-yellow-500/10 text-yellow-200"
+            }`}
+          >
+            {form.type === "income"
+              ? "Income increases your total income and net balance. It does not affect Budgets."
+              : "Expenses are used by Budgets to calculate category progress for the selected month."}
           </div>
 
           <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
@@ -718,12 +797,19 @@ function DeleteModal({
           <span className="font-semibold text-white">
             {transaction.category}
           </span>{" "}
-          transaction worth{" "}
+          {transaction.type} worth{" "}
           <span className="font-semibold text-white">
             {formatMoney(transaction.amount)}
           </span>
           .
         </p>
+
+        {transaction.type === "expense" && (
+          <p className="mt-3 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-3 text-sm text-yellow-200">
+            Removing this expense will also reduce the used amount shown in
+            Budgets.
+          </p>
+        )}
 
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button

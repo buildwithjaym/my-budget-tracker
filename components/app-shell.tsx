@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3,
+  FileText,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -21,14 +22,19 @@ const navItems = [
     icon: LayoutDashboard,
   },
   {
-    label: "Transactions",
-    href: "/transactions",
+    label: "Budgets",
+    href: "/budgets",
     icon: BarChart3,
   },
   {
-    label: "Budgets",
-    href: "/budgets",
+    label: "Transactions",
+    href: "/transactions",
     icon: Wallet,
+  },
+  {
+    label: "Reports",
+    href: "/reports",
+    icon: FileText,
   },
   {
     label: "Settings",
@@ -48,9 +54,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <main className="min-h-screen bg-[#020617] text-white">
-      {/* Mobile top bar */}
       <div className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#020617]/90 px-4 backdrop-blur-xl lg:hidden">
-        <Link href="/dashboard" className="flex items-center gap-3">
+        <Link
+          href="/dashboard"
+          onClick={() => setOpen(false)}
+          className="flex items-center gap-3"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
             <Wallet className="h-5 w-5" />
           </div>
@@ -73,7 +82,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </button>
       </div>
 
-      {/* Desktop sidebar */}
       <aside className="fixed left-0 top-0 z-30 hidden h-screen w-72 border-r border-white/10 bg-[#020617] p-5 lg:flex lg:flex-col">
         <SidebarContent
           pathname={pathname}
@@ -83,7 +91,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       </aside>
 
-      {/* Mobile overlay */}
       {open && (
         <button
           type="button"
@@ -93,7 +100,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Mobile right drawer */}
       <aside
         className={`fixed right-0 top-0 z-50 h-screen w-[82%] max-w-sm border-l border-white/10 bg-[#020617] p-5 shadow-2xl shadow-black/50 transition-transform duration-300 lg:hidden ${
           open ? "translate-x-0" : "translate-x-full"
@@ -107,7 +113,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       </aside>
 
-      {/* Page content */}
       <section className="min-h-screen px-4 py-6 sm:px-6 lg:ml-72 lg:px-8 lg:py-8">
         {children}
       </section>
@@ -129,7 +134,11 @@ function SidebarContent({
   return (
     <div className="flex h-full flex-col">
       <div className="mb-10 flex items-center justify-between">
-        <Link href="/dashboard" onClick={onClose} className="flex items-center gap-3">
+        <Link
+          href="/dashboard"
+          onClick={onClose}
+          className="flex items-center gap-3"
+        >
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
             <Wallet className="h-6 w-6" />
           </div>
