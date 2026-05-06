@@ -104,7 +104,7 @@ export default function RegisterPage() {
 
           <div>
             <label className="text-sm font-medium text-slate-700">
-              Gmail Address
+              Email Address
             </label>
             <input
               type="email"
