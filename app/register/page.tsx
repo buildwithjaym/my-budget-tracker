@@ -24,7 +24,15 @@ export default function RegisterPage() {
     e.preventDefault();
     setMessage("");
 
-    if (!isValidGmail(email)) {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanFullName = fullName.trim();
+
+    if (!cleanFullName) {
+      setMessage("Full name is required.");
+      return;
+    }
+
+    if (!isValidGmail(cleanEmail)) {
       setMessage("Please enter a valid Gmail address ending with @gmail.com.");
       return;
     }
@@ -36,9 +44,14 @@ export default function RegisterPage() {
 
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
+    const { error } = await supabase.auth.signUp({
+      email: cleanEmail,
       password,
+      options: {
+        data: {
+          full_name: cleanFullName,
+        },
+      },
     });
 
     if (error) {
@@ -47,41 +60,27 @@ export default function RegisterPage() {
       return;
     }
 
-    if (data.user) {
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: data.user.id,
-        full_name: fullName.trim(),
-      });
-
-      if (profileError) {
-        setMessage(profileError.message);
-        setLoading(false);
-        return;
-      }
-    }
-
+    setLoading(false);
     router.push("/login");
     router.refresh();
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-emerald-100 px-4 py-8 font-sans">
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-emerald-100 px-4 py-8">
       <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl sm:p-8">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
             <Wallet className="h-7 w-7" />
           </div>
 
-          <h1 className="text-2xl font-bold tracking-tight text-emerald-800">
-            MyBudget
-          </h1>
+          <h1 className="text-2xl font-bold text-emerald-800">MyBudget</h1>
 
-          <h2 className="mt-6 text-3xl font-bold tracking-tight text-slate-900">
+          <h2 className="mt-6 text-3xl font-bold text-slate-900">
             Create account
           </h2>
 
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            Start tracking your income, expenses, and monthly budget alerts.
+          <p className="mt-2 text-sm text-slate-500">
+            Start tracking your personal expenses and budget alerts.
           </p>
         </div>
 
@@ -93,10 +92,13 @@ export default function RegisterPage() {
             <input
               type="text"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                setMessage("");
+              }}
               required
               placeholder="Juan Dela Cruz"
-              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
             />
           </div>
 
@@ -113,7 +115,7 @@ export default function RegisterPage() {
               }}
               required
               placeholder="yourname@gmail.com"
-              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
             />
           </div>
 
@@ -131,7 +133,7 @@ export default function RegisterPage() {
               required
               minLength={6}
               placeholder="Minimum 6 characters"
-              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
+              className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
             />
           </div>
 
@@ -144,7 +146,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
           >
             {loading ? "Creating account..." : "Create Account"}
           </button>
