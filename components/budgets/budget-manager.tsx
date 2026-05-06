@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Edit,
   Plus,
+  Search,
   Target,
   Trash2,
   WalletCards,
@@ -15,10 +16,28 @@ import {
   XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import type {
+  Dispatch,
+  FormEvent,
+  ReactNode,
+  SetStateAction,
+} from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-const categories = [
+type BudgetStatus = "all" | "safe" | "warning" | "exceeded";
+
+type FormState = {
+  category: string;
+  amount: string;
+};
+
+const emptyForm: FormState = {
+  category: "",
+  amount: "",
+};
+
+const fallbackCategories = [
   "Food",
   "Transportation",
   "School",
@@ -31,16 +50,6 @@ const categories = [
   "Other",
 ];
 
-type FormState = {
-  category: string;
-  amount: string;
-};
-
-const emptyForm: FormState = {
-  category: "Food",
-  amount: "",
-};
-
 function formatMoney(value: number | string) {
   return new Intl.NumberFormat("en-PH", {
     style: "currency",
@@ -49,56 +58,79 @@ function formatMoney(value: number | string) {
   }).format(Number(value));
 }
 
-function formatMonth(value: string) {
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getMonthRange(month: number, year: number) {
+  return {
+    monthStart: formatLocalDate(new Date(year, month - 1, 1)),
+    monthEnd: formatLocalDate(new Date(year, month, 0)),
+  };
+}
+
+function toMonthInputValue(month: number, year: number) {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function fromMonthInputValue(value: string) {
+  const [year, month] = value.split("-").map(Number);
+
+  return {
+    month,
+    year,
+  };
+}
+
+function formatMonth(month: number, year: number) {
   return new Intl.DateTimeFormat("en-PH", {
     month: "long",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(new Date(year, month - 1, 1));
 }
 
-function getMonthEnd(monthStart: string) {
-  const date = new Date(monthStart);
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0)
-    .toISOString()
-    .slice(0, 10);
-}
-
-function toMonthStartFromInput(value: string) {
-  return `${value}-01`;
-}
-
-function toMonthInputValue(value: string) {
-  return value.slice(0, 7);
-}
-
-function getBudgetStatus(percentage: number) {
+function getStatusDetails(percentage: number) {
   if (percentage >= 100) {
     return {
+      key: "exceeded" as const,
       label: "Exceeded",
-      description: "This category has gone beyond the budget limit.",
+      description: "Spending is already over the budget limit.",
       icon: <XCircle className="h-4 w-4" />,
-      badgeClass: "bg-red-500/10 text-red-300 border-red-500/20",
+      badgeClass: "border-red-500/20 bg-red-500/10 text-red-300",
       barClass: "bg-red-500",
+      cardClass: "border-red-500/20 bg-red-500/[0.04]",
     };
   }
 
   if (percentage >= 80) {
     return {
+      key: "warning" as const,
       label: "Warning",
-      description: "This category is close to reaching the budget limit.",
+      description: "Spending has reached at least 80% of the budget.",
       icon: <AlertTriangle className="h-4 w-4" />,
-      badgeClass: "bg-yellow-500/10 text-yellow-300 border-yellow-500/20",
+      badgeClass: "border-yellow-500/20 bg-yellow-500/10 text-yellow-300",
       barClass: "bg-yellow-500",
+      cardClass: "border-yellow-500/20 bg-yellow-500/[0.04]",
     };
   }
 
   return {
+    key: "safe" as const,
     label: "Safe",
-    description: "This category is still within the budget limit.",
+    description: "Spending is still within the safe budget range.",
     icon: <CheckCircle2 className="h-4 w-4" />,
-    badgeClass: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
     barClass: "bg-emerald-500",
+    cardClass: "border-white/10 bg-white/[0.04]",
   };
+}
+
+function normalizeCategory(category: string | null) {
+  return category?.trim() || "Uncategorized";
 }
 
 export default function BudgetManager({
@@ -106,11 +138,15 @@ export default function BudgetManager({
   initialBudgets,
   initialTransactions,
   initialMonth,
+  initialYear,
+  initialCategoryOptions,
 }: {
   userId: string;
   initialBudgets: Budget[];
   initialTransactions: BudgetTransaction[];
-  initialMonth: string;
+  initialMonth: number;
+  initialYear: number;
+  initialCategoryOptions: string[];
 }) {
   const router = useRouter();
 
@@ -118,26 +154,41 @@ export default function BudgetManager({
   const [transactions, setTransactions] =
     useState<BudgetTransaction[]>(initialTransactions);
 
+  const [categoryOptions, setCategoryOptions] = useState<string[]>(
+    initialCategoryOptions.length > 0
+      ? initialCategoryOptions
+      : fallbackCategories
+  );
+
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);
+  const [selectedYear, setSelectedYear] = useState(initialYear);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<BudgetStatus>("all");
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Budget | null>(null);
+
   const [form, setForm] = useState<FormState>(emptyForm);
   const [loading, setLoading] = useState(false);
 
   const budgetRows = useMemo(() => {
     return budgets.map((budget) => {
+      const category = normalizeCategory(budget.category);
+
       const used = transactions
-        .filter((transaction) => transaction.category === budget.category)
+        .filter((transaction) => transaction.category === category)
         .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
 
       const amount = Number(budget.amount);
       const remaining = amount - used;
       const percentage = amount > 0 ? (used / amount) * 100 : 0;
-      const status = getBudgetStatus(percentage);
+      const status = getStatusDetails(percentage);
 
       return {
         ...budget,
+        category,
         amount,
         used,
         remaining,
@@ -148,20 +199,47 @@ export default function BudgetManager({
     });
   }, [budgets, transactions]);
 
+  const filteredBudgetRows = useMemo(() => {
+    const searchValue = search.toLowerCase().trim();
+
+    return budgetRows.filter((budget) => {
+      const matchesSearch =
+        budget.category.toLowerCase().includes(searchValue) ||
+        String(budget.amount).includes(searchValue) ||
+        String(budget.used).includes(searchValue);
+
+      const matchesStatus =
+        statusFilter === "all" || budget.status.key === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [budgetRows, search, statusFilter]);
+
   const totalBudget = budgetRows.reduce((sum, item) => sum + item.amount, 0);
   const totalUsed = budgetRows.reduce((sum, item) => sum + item.used, 0);
   const totalRemaining = totalBudget - totalUsed;
+  const totalUsagePercentage =
+    totalBudget > 0 ? Math.min((totalUsed / totalBudget) * 100, 100) : 0;
 
-  async function loadMonth(monthStart: string) {
+  const warningCount = budgetRows.filter(
+    (item) => item.status.key === "warning"
+  ).length;
+
+  const exceededCount = budgetRows.filter(
+    (item) => item.status.key === "exceeded"
+  ).length;
+
+  async function loadMonth(month: number, year: number) {
     setLoading(true);
 
-    const monthEnd = getMonthEnd(monthStart);
+    const { monthStart, monthEnd } = getMonthRange(month, year);
 
     const { data: budgetData, error: budgetError } = await supabase
       .from("budgets")
-      .select("id, user_id, category, amount, month, created_at")
+      .select("id, user_id, category, amount, month, year, created_at")
       .eq("user_id", userId)
-      .eq("month", monthStart)
+      .eq("month", month)
+      .eq("year", year)
       .order("category", { ascending: true });
 
     if (budgetError) {
@@ -188,35 +266,73 @@ export default function BudgetManager({
       return;
     }
 
-    setBudgets((budgetData ?? []) as Budget[]);
-    setTransactions((transactionData ?? []) as BudgetTransaction[]);
-    setSelectedMonth(monthStart);
+    const { data: categoryData, error: categoryError } = await supabase
+      .from("transactions")
+      .select("category")
+      .eq("user_id", userId)
+      .order("category", { ascending: true });
+
+    if (categoryError) {
+      toast.error("Failed to load categories", {
+        description: categoryError.message,
+      });
+      setLoading(false);
+      return;
+    }
+
+    const nextBudgets = (budgetData ?? []) as Budget[];
+    const nextTransactions = (transactionData ?? []) as BudgetTransaction[];
+
+    const nextCategoryOptions = Array.from(
+      new Set(
+        [
+          ...(categoryData ?? []).map((item) => item.category),
+          ...nextBudgets.map((item) => item.category),
+        ]
+          .filter(Boolean)
+          .map((category) => String(category))
+      )
+    ).sort((a, b) => a.localeCompare(b));
+
+    setBudgets(nextBudgets);
+    setTransactions(nextTransactions);
+    setCategoryOptions(
+      nextCategoryOptions.length > 0 ? nextCategoryOptions : fallbackCategories
+    );
+    setSelectedMonth(month);
+    setSelectedYear(year);
+    setSearch("");
+    setStatusFilter("all");
     setLoading(false);
   }
 
   function openAddModal() {
     setEditingBudget(null);
-    setForm(emptyForm);
+    setForm({
+      category: categoryOptions[0] ?? "",
+      amount: "",
+    });
     setModalOpen(true);
   }
 
   function openEditModal(budget: Budget) {
     setEditingBudget(budget);
     setForm({
-      category: budget.category,
+      category: normalizeCategory(budget.category),
       amount: String(budget.amount),
     });
     setModalOpen(true);
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
+    const category = form.category.trim();
     const amount = Number(form.amount);
 
-    if (!form.category.trim()) {
+    if (!category) {
       toast.error("Missing category", {
-        description: "Please select a budget category.",
+        description: "Please select or enter a budget category.",
       });
       return;
     }
@@ -231,16 +347,37 @@ export default function BudgetManager({
     setLoading(true);
 
     if (editingBudget) {
+      const duplicateBudget = budgets.find(
+        (budget) =>
+          budget.id !== editingBudget.id &&
+          normalizeCategory(budget.category).toLowerCase() ===
+            category.toLowerCase() &&
+          budget.month === selectedMonth &&
+          budget.year === selectedYear
+      );
+
+      if (duplicateBudget) {
+        toast.error("Budget already exists", {
+          description: `${category} already has a budget for ${formatMonth(
+            selectedMonth,
+            selectedYear
+          )}.`,
+        });
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("budgets")
         .update({
-          category: form.category,
+          category,
           amount,
           month: selectedMonth,
+          year: selectedYear,
         })
         .eq("id", editingBudget.id)
         .eq("user_id", userId)
-        .select()
+        .select("id, user_id, category, amount, month, year, created_at")
         .single();
 
       if (error) {
@@ -252,23 +389,40 @@ export default function BudgetManager({
       }
 
       setBudgets((current) =>
-        current.map((item) =>
-          item.id === editingBudget.id ? (data as Budget) : item
+        current
+          .map((item) =>
+            item.id === editingBudget.id ? (data as Budget) : item
+          )
+          .sort((a, b) =>
+            normalizeCategory(a.category).localeCompare(
+              normalizeCategory(b.category)
+            )
+          )
+      );
+
+      setCategoryOptions((current) =>
+        Array.from(new Set([...current, category])).sort((a, b) =>
+          a.localeCompare(b)
         )
       );
 
       toast.success("Budget updated", {
-        description: `${form.category} budget was updated successfully.`,
+        description: `${category} budget was updated successfully.`,
       });
     } else {
       const existingBudget = budgets.find(
-        (budget) => budget.category === form.category
+        (budget) =>
+          normalizeCategory(budget.category).toLowerCase() ===
+            category.toLowerCase() &&
+          budget.month === selectedMonth &&
+          budget.year === selectedYear
       );
 
       if (existingBudget) {
         toast.error("Budget already exists", {
-          description: `${form.category} already has a budget for ${formatMonth(
-            selectedMonth
+          description: `${category} already has a budget for ${formatMonth(
+            selectedMonth,
+            selectedYear
           )}.`,
         });
         setLoading(false);
@@ -279,11 +433,12 @@ export default function BudgetManager({
         .from("budgets")
         .insert({
           user_id: userId,
-          category: form.category,
+          category,
           amount,
           month: selectedMonth,
+          year: selectedYear,
         })
-        .select()
+        .select("id, user_id, category, amount, month, year, created_at")
         .single();
 
       if (error) {
@@ -294,13 +449,24 @@ export default function BudgetManager({
         return;
       }
 
-      setBudgets((current) => [...current, data as Budget].sort((a, b) =>
-        a.category.localeCompare(b.category)
-      ));
+      setBudgets((current) =>
+        [...current, data as Budget].sort((a, b) =>
+          normalizeCategory(a.category).localeCompare(
+            normalizeCategory(b.category)
+          )
+        )
+      );
+
+      setCategoryOptions((current) =>
+        Array.from(new Set([...current, category])).sort((a, b) =>
+          a.localeCompare(b)
+        )
+      );
 
       toast.success("Budget added", {
-        description: `${form.category} budget was created for ${formatMonth(
-          selectedMonth
+        description: `${category} budget was created for ${formatMonth(
+          selectedMonth,
+          selectedYear
         )}.`,
       });
     }
@@ -314,6 +480,8 @@ export default function BudgetManager({
 
   async function handleDelete() {
     if (!deleteTarget) return;
+
+    const category = normalizeCategory(deleteTarget.category);
 
     setLoading(true);
 
@@ -336,7 +504,7 @@ export default function BudgetManager({
     );
 
     toast.success("Budget deleted", {
-      description: `${deleteTarget.category} budget was removed successfully.`,
+      description: `${category} budget was removed successfully.`,
     });
 
     setLoading(false);
@@ -357,7 +525,8 @@ export default function BudgetManager({
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Set monthly category limits and monitor your spending progress.
+            Set monthly spending limits and monitor category-based expenses from
+            your transactions.
           </p>
         </div>
 
@@ -371,50 +540,101 @@ export default function BudgetManager({
         </button>
       </div>
 
+      {(warningCount > 0 || exceededCount > 0) && (
+        <div className="mb-6 rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-yellow-500/10 text-yellow-300">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+
+            <div>
+              <h2 className="font-semibold text-yellow-100">
+                Budget attention needed
+              </h2>
+              <p className="mt-1 text-sm text-yellow-200/80">
+                {warningCount > 0 && `${warningCount} budget near the limit. `}
+                {exceededCount > 0 &&
+                  `${exceededCount} budget already exceeded. `}
+                Review your spending for {formatMonth(selectedMonth, selectedYear)}.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <section className="mb-6 grid gap-4 md:grid-cols-3">
         <SummaryCard
           title="Total Budget"
           value={formatMoney(totalBudget)}
-          helper={`Budget limits for ${formatMonth(selectedMonth)}`}
+          helper={`Limits for ${formatMonth(selectedMonth, selectedYear)}`}
           icon={<Target className="h-5 w-5" />}
         />
 
         <SummaryCard
           title="Total Used"
           value={formatMoney(totalUsed)}
-          helper="Expenses recorded from transactions"
+          helper={`${totalUsagePercentage.toFixed(0)}% of total budget used`}
           icon={<WalletCards className="h-5 w-5" />}
         />
 
         <SummaryCard
           title="Remaining"
           value={formatMoney(totalRemaining)}
-          helper="Budget left after expenses"
+          helper={
+            totalRemaining < 0
+              ? "You are over the total budget"
+              : "Budget left after expenses"
+          }
           icon={<CalendarDays className="h-5 w-5" />}
+          danger={totalRemaining < 0}
         />
       </section>
 
       <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20 backdrop-blur-xl">
-        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-white">
               Monthly Budget Limits
             </h2>
             <p className="text-sm text-slate-400">
-              {budgetRows.length} budget
-              {budgetRows.length === 1 ? "" : "s"} for{" "}
-              {formatMonth(selectedMonth)}
+              {filteredBudgetRows.length} of {budgetRows.length} budget
+              {budgetRows.length === 1 ? "" : "s"} shown for{" "}
+              {formatMonth(selectedMonth, selectedYear)}
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <input
               type="month"
-              value={toMonthInputValue(selectedMonth)}
-              onChange={(e) => loadMonth(toMonthStartFromInput(e.target.value))}
+              value={toMonthInputValue(selectedMonth, selectedYear)}
+              onChange={(e) => {
+                const { month, year } = fromMonthInputValue(e.target.value);
+                loadMonth(month, year);
+              }}
               disabled={loading}
               className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
             />
+
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search budget..."
+                className="w-full rounded-2xl border border-white/10 bg-white/5 px-10 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+              />
+            </div>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as BudgetStatus)}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+            >
+              <option value="all">All Status</option>
+              <option value="safe">Safe</option>
+              <option value="warning">Warning</option>
+              <option value="exceeded">Exceeded</option>
+            </select>
 
             <button
               type="button"
@@ -438,25 +658,25 @@ export default function BudgetManager({
             <span className="text-right">Actions</span>
           </div>
 
-          {budgetRows.length === 0 ? (
+          {filteredBudgetRows.length === 0 ? (
             <div className="px-4 py-12 text-center">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 text-slate-400">
                 <Target className="h-6 w-6" />
               </div>
 
               <h3 className="mt-4 font-semibold text-white">
-                No budgets set
+                No budgets found
               </h3>
 
               <p className="mt-1 text-sm text-slate-400">
-                Create your first category budget for this month.
+                Create a category budget or adjust your filters.
               </p>
             </div>
           ) : (
-            budgetRows.map((budget) => (
+            filteredBudgetRows.map((budget) => (
               <div
                 key={budget.id}
-                className="grid gap-4 border-t border-white/10 px-4 py-5 text-sm md:grid-cols-8 md:items-center"
+                className={`grid gap-4 border-t px-4 py-5 text-sm md:grid-cols-8 md:items-center ${budget.status.cardClass} border-white/10`}
               >
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
@@ -497,7 +717,7 @@ export default function BudgetManager({
                 </div>
 
                 <div className="md:col-span-2">
-                  <div className="mb-2 flex items-center justify-between">
+                  <div className="mb-2 flex items-center justify-between gap-3">
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
                       Progress
                     </p>
@@ -563,6 +783,9 @@ export default function BudgetManager({
           title={editingBudget ? "Edit Budget" : "Add Budget"}
           form={form}
           setForm={setForm}
+          categoryOptions={categoryOptions}
+          selectedMonth={selectedMonth}
+          selectedYear={selectedYear}
           loading={loading}
           onClose={() => {
             setModalOpen(false);
@@ -576,6 +799,8 @@ export default function BudgetManager({
       {deleteTarget && (
         <DeleteBudgetModal
           budget={deleteTarget}
+          selectedMonth={selectedMonth}
+          selectedYear={selectedYear}
           loading={loading}
           onClose={() => setDeleteTarget(null)}
           onDelete={handleDelete}
@@ -590,15 +815,29 @@ function SummaryCard({
   value,
   helper,
   icon,
+  danger = false,
 }: {
   title: string;
   value: string;
   helper: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
+  danger?: boolean;
 }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20 backdrop-blur-xl">
-      <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-300">
+    <div
+      className={`rounded-3xl border p-5 shadow-2xl shadow-black/20 backdrop-blur-xl ${
+        danger
+          ? "border-red-500/20 bg-red-500/[0.04]"
+          : "border-white/10 bg-white/[0.04]"
+      }`}
+    >
+      <div
+        className={`mb-5 flex h-11 w-11 items-center justify-center rounded-2xl ${
+          danger
+            ? "bg-red-500/10 text-red-300"
+            : "bg-emerald-500/10 text-emerald-300"
+        }`}
+      >
         {icon}
       </div>
 
@@ -613,16 +852,22 @@ function BudgetModal({
   title,
   form,
   setForm,
+  categoryOptions,
+  selectedMonth,
+  selectedYear,
   loading,
   onClose,
   onSubmit,
 }: {
   title: string;
   form: FormState;
-  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  setForm: Dispatch<SetStateAction<FormState>>;
+  categoryOptions: string[];
+  selectedMonth: number;
+  selectedYear: number;
   loading: boolean;
   onClose: () => void;
-  onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+  onSubmit: (e: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
@@ -631,7 +876,7 @@ function BudgetModal({
           <div>
             <h2 className="text-xl font-bold text-white">{title}</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Set a monthly spending limit for a category.
+              Set a spending limit for {formatMonth(selectedMonth, selectedYear)}.
             </p>
           </div>
 
@@ -652,7 +897,8 @@ function BudgetModal({
               Category
             </label>
 
-            <select
+            <input
+              list="budget-category-options"
               value={form.category}
               onChange={(e) =>
                 setForm((current) => ({
@@ -660,15 +906,20 @@ function BudgetModal({
                   category: e.target.value,
                 }))
               }
+              placeholder="Select or type category"
               required
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
-            >
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+            />
+
+            <datalist id="budget-category-options">
+              {categoryOptions.map((category) => (
+                <option key={category} value={category} />
               ))}
-            </select>
+            </datalist>
+
+            <p className="mt-2 text-xs text-slate-500">
+              Categories come from your existing transaction and budget records.
+            </p>
           </div>
 
           <div>
@@ -694,8 +945,8 @@ function BudgetModal({
           </div>
 
           <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-200">
-            Budget alerts are based on expenses recorded in Transactions.
-            Warning starts at 80%, and Exceeded starts at 100%.
+            Budget progress is calculated from expense transactions in the same
+            category. Warning starts at 80%, and Exceeded starts at 100%.
           </div>
 
           <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
@@ -724,15 +975,21 @@ function BudgetModal({
 
 function DeleteBudgetModal({
   budget,
+  selectedMonth,
+  selectedYear,
   loading,
   onClose,
   onDelete,
 }: {
   budget: Budget;
+  selectedMonth: number;
+  selectedYear: number;
   loading: boolean;
   onClose: () => void;
   onDelete: () => void;
 }) {
+  const category = normalizeCategory(budget.category);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
@@ -744,12 +1001,12 @@ function DeleteBudgetModal({
 
         <p className="mt-2 text-sm text-slate-400">
           This will permanently delete the{" "}
-          <span className="font-semibold text-white">{budget.category}</span>{" "}
-          budget worth{" "}
+          <span className="font-semibold text-white">{category}</span> budget
+          worth{" "}
           <span className="font-semibold text-white">
             {formatMoney(budget.amount)}
-          </span>
-          .
+          </span>{" "}
+          for {formatMonth(selectedMonth, selectedYear)}.
         </p>
 
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
