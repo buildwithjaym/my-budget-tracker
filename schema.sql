@@ -201,3 +201,6 @@ as $$
   order by transaction_date desc, created_at desc
   limit limit_count;
 $$;
+
+alter table public.budgets
+alter column category set not null;
