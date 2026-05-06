@@ -9,7 +9,7 @@ export type Transaction = {
   id: string;
   user_id: string;
   type: "income" | "expense";
-  amount: number | string;
+  amount: number;
   category: string;
   note: string | null;
   transaction_date: string;
@@ -21,15 +21,18 @@ export default async function TransactionsPage() {
 
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  if (userError || !user) {
     redirect("/login");
   }
 
   const { data: transactions, error } = await supabase
     .from("transactions")
-    .select("*")
+    .select(
+      "id, user_id, type, amount, category, note, transaction_date, created_at"
+    )
     .eq("user_id", user.id)
     .order("transaction_date", { ascending: false })
     .order("created_at", { ascending: false });
