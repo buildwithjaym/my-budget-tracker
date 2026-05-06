@@ -77,6 +77,7 @@ export default function TransactionManager({
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">(
     "all"
   );
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] =
@@ -88,17 +89,23 @@ export default function TransactionManager({
   const [form, setForm] = useState<FormState>(emptyForm);
 
   const filteredTransactions = useMemo(() => {
+    const searchValue = search.toLowerCase().trim();
+
     return transactions.filter((transaction) => {
       const matchesSearch =
-        transaction.category.toLowerCase().includes(search.toLowerCase()) ||
-        transaction.note?.toLowerCase().includes(search.toLowerCase());
+        transaction.category.toLowerCase().includes(searchValue) ||
+        transaction.note?.toLowerCase().includes(searchValue) ||
+        String(transaction.amount).includes(searchValue);
 
       const matchesType =
         typeFilter === "all" || transaction.type === typeFilter;
 
-      return matchesSearch && matchesType;
+      const matchesCategory =
+        categoryFilter === "all" || transaction.category === categoryFilter;
+
+      return matchesSearch && matchesType && matchesCategory;
     });
-  }, [transactions, search, typeFilter]);
+  }, [transactions, search, typeFilter, categoryFilter]);
 
   const totalIncome = transactions
     .filter((item) => item.type === "income")
@@ -107,6 +114,8 @@ export default function TransactionManager({
   const totalExpenses = transactions
     .filter((item) => item.type === "expense")
     .reduce((sum, item) => sum + Number(item.amount), 0);
+
+  const netBalance = totalIncome - totalExpenses;
 
   function openAddModal() {
     setEditingTransaction(null);
@@ -140,7 +149,14 @@ export default function TransactionManager({
 
     if (!form.category.trim()) {
       toast.error("Missing category", {
-        description: "Please select or enter a category.",
+        description: "Please select a category.",
+      });
+      return;
+    }
+
+    if (!form.transaction_date) {
+      toast.error("Missing date", {
+        description: "Please select a transaction date.",
       });
       return;
     }
@@ -177,7 +193,7 @@ export default function TransactionManager({
       );
 
       toast.success("Transaction updated", {
-        description: "Your transaction was updated successfully.",
+        description: `${form.category} transaction was updated successfully.`,
       });
     } else {
       const { data, error } = await supabase
@@ -204,7 +220,7 @@ export default function TransactionManager({
       setTransactions((current) => [data as Transaction, ...current]);
 
       toast.success("Transaction added", {
-        description: "Your dashboard totals will be updated.",
+        description: `${form.category} transaction was added successfully.`,
       });
     }
 
@@ -239,7 +255,7 @@ export default function TransactionManager({
     );
 
     toast.success("Transaction deleted", {
-      description: "The transaction was removed successfully.",
+      description: `${deleteTarget.category} transaction was removed successfully.`,
     });
 
     setLoading(false);
@@ -260,7 +276,7 @@ export default function TransactionManager({
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Add, edit, delete, and organize your financial records.
+            Add, edit, delete, categorize, and organize your financial records.
           </p>
         </div>
 
@@ -291,14 +307,14 @@ export default function TransactionManager({
 
         <SummaryCard
           title="Net Balance"
-          value={formatMoney(totalIncome - totalExpenses)}
+          value={formatMoney(netBalance)}
           helper="Income minus expenses"
           icon={<CalendarDays className="h-5 w-5" />}
         />
       </section>
 
       <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20 backdrop-blur-xl">
-        <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-white">
               Transaction Records
@@ -309,14 +325,14 @@ export default function TransactionManager({
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="relative">
+          <div className="grid gap-3 sm:grid-cols-2 lg:flex">
+            <div className="relative sm:col-span-2 lg:col-span-1">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search category or note..."
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-10 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 sm:w-72"
+                placeholder="Search category, note, or amount..."
+                className="w-full rounded-2xl border border-white/10 bg-white/5 px-10 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 lg:w-80"
               />
             </div>
 
@@ -331,15 +347,28 @@ export default function TransactionManager({
               <option value="income">Income</option>
               <option value="expense">Expense</option>
             </select>
+
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
+            >
+              <option value="all">All Categories</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-white/10">
-          <div className="hidden grid-cols-6 bg-white/5 px-4 py-3 text-xs font-medium uppercase tracking-wide text-slate-400 md:grid">
+          <div className="hidden grid-cols-7 bg-white/5 px-4 py-3 text-xs font-medium uppercase tracking-wide text-slate-400 md:grid">
+            <span>Date</span>
             <span>Category</span>
             <span>Type</span>
-            <span>Note</span>
-            <span>Date</span>
+            <span className="col-span-2">Note</span>
             <span className="text-right">Amount</span>
             <span className="text-right">Actions</span>
           </div>
@@ -349,9 +378,11 @@ export default function TransactionManager({
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 text-slate-400">
                 <CalendarDays className="h-6 w-6" />
               </div>
+
               <h3 className="mt-4 font-semibold text-white">
                 No transactions found
               </h3>
+
               <p className="mt-1 text-sm text-slate-400">
                 Add your first income or expense record.
               </p>
@@ -360,20 +391,32 @@ export default function TransactionManager({
             filteredTransactions.map((transaction) => (
               <div
                 key={transaction.id}
-                className="grid gap-3 border-t border-white/10 px-4 py-4 text-sm md:grid-cols-6 md:items-center"
+                className="grid gap-3 border-t border-white/10 px-4 py-4 text-sm md:grid-cols-7 md:items-center"
               >
                 <div>
-                  <p className="font-medium text-slate-200">
-                    {transaction.category}
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                    Date
                   </p>
-                  <p className="mt-1 text-xs text-slate-500 md:hidden">
+                  <p className="text-slate-400">
                     {formatDate(transaction.transaction_date)}
                   </p>
                 </div>
 
                 <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                    Category
+                  </p>
+                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
+                    {transaction.category}
+                  </span>
+                </div>
+
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                    Type
+                  </p>
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+                    className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
                       transaction.type === "income"
                         ? "bg-emerald-500/10 text-emerald-300"
                         : "bg-red-500/10 text-red-300"
@@ -383,43 +426,55 @@ export default function TransactionManager({
                   </span>
                 </div>
 
-                <p className="text-slate-400">
-                  {transaction.note || "No note"}
-                </p>
+                <div className="md:col-span-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                    Note
+                  </p>
+                  <p className="line-clamp-2 text-slate-400">
+                    {transaction.note || "No note"}
+                  </p>
+                </div>
 
-                <p className="hidden text-slate-400 md:block">
-                  {formatDate(transaction.transaction_date)}
-                </p>
-
-                <p
-                  className={`font-semibold md:text-right ${
-                    transaction.type === "income"
-                      ? "text-emerald-400"
-                      : "text-red-300"
-                  }`}
-                >
-                  {transaction.type === "income" ? "+" : "-"}
-                  {formatMoney(transaction.amount)}
-                </p>
-
-                <div className="flex gap-2 md:justify-end">
-                  <button
-                    type="button"
-                    onClick={() => openEditModal(transaction)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
-                    aria-label="Edit transaction"
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                    Amount
+                  </p>
+                  <p
+                    className={`font-semibold md:text-right ${
+                      transaction.type === "income"
+                        ? "text-emerald-400"
+                        : "text-red-300"
+                    }`}
                   >
-                    <Edit className="h-4 w-4" />
-                  </button>
+                    {transaction.type === "income" ? "+" : "-"}
+                    {formatMoney(transaction.amount)}
+                  </p>
+                </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTarget(transaction)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 transition hover:bg-red-500/20"
-                    aria-label="Delete transaction"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                    Actions
+                  </p>
+
+                  <div className="mt-2 flex gap-2 md:mt-0 md:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(transaction)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                      aria-label="Edit transaction"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(transaction)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 transition hover:bg-red-500/20"
+                      aria-label="Delete transaction"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -495,8 +550,8 @@ function TransactionModal({
 }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
-        <div className="mb-5 flex items-center justify-between">
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
+        <div className="mb-5 flex items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-white">{title}</h2>
             <p className="mt-1 text-sm text-slate-400">
@@ -508,7 +563,8 @@ function TransactionModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+            aria-label="Close modal"
           >
             <X className="h-5 w-5" />
           </button>
@@ -518,7 +574,9 @@ function TransactionModal({
           <div className="grid grid-cols-2 gap-3 rounded-2xl bg-white/5 p-1">
             <button
               type="button"
-              onClick={() => setForm((current) => ({ ...current, type: "income" }))}
+              onClick={() =>
+                setForm((current) => ({ ...current, type: "income" }))
+              }
               className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
                 form.type === "income"
                   ? "bg-emerald-500 text-white"
@@ -530,7 +588,9 @@ function TransactionModal({
 
             <button
               type="button"
-              onClick={() => setForm((current) => ({ ...current, type: "expense" }))}
+              onClick={() =>
+                setForm((current) => ({ ...current, type: "expense" }))
+              }
               className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
                 form.type === "expense"
                   ? "bg-red-500 text-white"
@@ -564,8 +624,12 @@ function TransactionModal({
             <select
               value={form.category}
               onChange={(e) =>
-                setForm((current) => ({ ...current, category: e.target.value }))
+                setForm((current) => ({
+                  ...current,
+                  category: e.target.value,
+                }))
               }
+              required
               className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10"
             >
               {categories.map((category) => (
@@ -650,8 +714,15 @@ function DeleteModal({
         <h2 className="text-xl font-bold text-white">Delete transaction?</h2>
 
         <p className="mt-2 text-sm text-slate-400">
-          This will permanently delete the {transaction.category} transaction
-          worth {formatMoney(transaction.amount)}.
+          This will permanently delete the{" "}
+          <span className="font-semibold text-white">
+            {transaction.category}
+          </span>{" "}
+          transaction worth{" "}
+          <span className="font-semibold text-white">
+            {formatMoney(transaction.amount)}
+          </span>
+          .
         </p>
 
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
