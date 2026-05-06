@@ -29,7 +29,8 @@ export default function LoginPage() {
     const cleanPassword = password.trim();
 
     if (!isValidGmail(cleanEmail)) {
-      const errorMessage = "Please enter a valid Gmail address ending with @gmail.com.";
+      const errorMessage =
+        "Please enter a valid Gmail address ending with @gmail.com.";
       setMessage(errorMessage);
       toast.error("Invalid email", {
         description: errorMessage,
@@ -79,20 +80,23 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-emerald-100 px-4 py-8">
-      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl shadow-emerald-900/10 ring-1 ring-emerald-100 sm:p-8">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#020617] px-4 py-8 text-white">
+      <div className="pointer-events-none absolute -left-32 top-10 h-72 w-72 rounded-full bg-emerald-500/20 blur-3xl" />
+      <div className="pointer-events-none absolute -right-32 bottom-10 h-72 w-72 rounded-full bg-teal-500/10 blur-3xl" />
+
+      <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-100 text-emerald-700 shadow-inner">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl border border-emerald-400/20 bg-emerald-500/10 text-emerald-300 shadow-lg shadow-emerald-500/10">
             <Wallet className="h-8 w-8" />
           </div>
 
-          <h1 className="text-2xl font-bold text-emerald-800">MyBudget</h1>
+          <h1 className="text-2xl font-bold text-emerald-300">MyBudget</h1>
 
-          <h2 className="mt-6 text-3xl font-bold tracking-tight text-slate-950">
+          <h2 className="mt-6 text-3xl font-bold tracking-tight text-white">
             Welcome back
           </h2>
 
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-slate-400">
             Login to continue managing your personal expenses and budgets.
           </p>
         </div>
@@ -101,7 +105,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="email"
-              className="text-sm font-medium text-slate-700"
+              className="text-sm font-medium text-slate-300"
             >
               Email Address
             </label>
@@ -118,14 +122,14 @@ export default function LoginPage() {
               required
               autoComplete="email"
               placeholder="yourname@gmail.com"
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-70"
+              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-400/60 focus:bg-slate-950 focus:ring-4 focus:ring-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-70"
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="text-sm font-medium text-slate-700"
+              className="text-sm font-medium text-slate-300"
             >
               Password
             </label>
@@ -143,14 +147,14 @@ export default function LoginPage() {
                 required
                 autoComplete="current-password"
                 placeholder="Enter your password"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-70"
+                className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 pr-12 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-400/60 focus:bg-slate-950 focus:ring-4 focus:ring-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-70"
               />
 
               <button
                 type="button"
                 onClick={() => setShowPassword((value) => !value)}
                 disabled={loading}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-emerald-700 disabled:cursor-not-allowed"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-emerald-300 disabled:cursor-not-allowed"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? (
@@ -163,7 +167,7 @@ export default function LoginPage() {
           </div>
 
           {message && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {message}
             </div>
           )}
@@ -171,18 +175,18 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading && <Loader2 className="h-4 w-4 animate-spin" />}
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
 
-        <p className="mt-8 text-center text-sm text-slate-600">
+        <p className="mt-8 text-center text-sm text-slate-400">
           Don&apos;t have an account?{" "}
           <Link
             href="/register"
-            className="font-semibold text-emerald-700 hover:text-emerald-800"
+            className="font-semibold text-emerald-300 transition hover:text-emerald-200"
           >
             Create account
           </Link>
