@@ -27,6 +27,16 @@ type CategoryReportRow = {
   status: "Safe" | "Warning" | "Exceeded" | "No Budget";
 };
 
+declare global {
+  interface Window {
+    median?: {
+      share?: {
+        downloadFile?: (options: { url: string; open?: boolean }) => void;
+      };
+    };
+  }
+}
+
 const monthOptions = [
   { value: 1, label: "January" },
   { value: 2, label: "February" },
@@ -93,8 +103,15 @@ function sanitizeFilename(value: string) {
   return safeValue || "user";
 }
 
-function downloadCsv(filename: string, csvContent: string) {
-  const blob = new Blob([csvContent], {
+function isMedianDownloadAvailable() {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.median?.share?.downloadFile === "function"
+  );
+}
+
+function browserDownloadCsv(filename: string, csvContent: string) {
+  const blob = new Blob([`\uFEFF${csvContent}`], {
     type: "text/csv;charset=utf-8;",
   });
 
@@ -108,6 +125,40 @@ function downloadCsv(filename: string, csvContent: string) {
   document.body.removeChild(link);
 
   URL.revokeObjectURL(url);
+}
+
+async function downloadCsv({
+  filename,
+  csvContent,
+  month,
+  year,
+}: {
+  filename: string;
+  csvContent: string;
+  month: number;
+  year: number;
+}) {
+  if (!isMedianDownloadAvailable()) {
+    browserDownloadCsv(filename, csvContent);
+    return;
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+
+  if (error || !data.session?.access_token) {
+    throw new Error("Please log in again before downloading your report.");
+  }
+
+  const downloadUrl = new URL("/api/reports/export", window.location.origin);
+
+  downloadUrl.searchParams.set("month", String(month));
+  downloadUrl.searchParams.set("year", String(year));
+  downloadUrl.searchParams.set("access_token", data.session.access_token);
+
+  window.median!.share!.downloadFile!({
+    url: downloadUrl.toString(),
+    open: false,
+  });
 }
 
 function getBudgetStatus(expense: number, budget: number) {
@@ -500,7 +551,12 @@ export default function ReportManager({
         .map((row) => row.map(escapeCsvValue).join(","))
         .join("\n");
 
-      downloadCsv(filename, csvContent);
+      await downloadCsv({
+        filename,
+        csvContent,
+        month: selectedMonth,
+        year: selectedYear,
+      });
 
       toast.success("Download successful", {
         id: toastId,
