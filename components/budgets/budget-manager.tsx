@@ -38,7 +38,6 @@ const categories = [
   "School",
   "Bills",
   "Shopping",
-  "Allowance",
   "Health",
   "Other",
 ];
