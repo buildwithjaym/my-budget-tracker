@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -60,8 +61,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           onClick={() => setOpen(false)}
           className="flex items-center gap-3"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
-            <Wallet className="h-5 w-5" />
+          <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-emerald-500/15">
+            <Image
+              src="/logo.png"
+              alt="MyBudget logo"
+              width={40}
+              height={40}
+              priority
+              className="h-full w-full object-contain p-1.5"
+            />
           </div>
 
           <div>
@@ -139,8 +147,15 @@ function SidebarContent({
           onClick={onClose}
           className="flex items-center gap-3"
         >
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-400">
-            <Wallet className="h-6 w-6" />
+          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-emerald-500/15">
+            <Image
+              src="/logo.png"
+              alt="MyBudget logo"
+              width={48}
+              height={48}
+              priority
+              className="h-full w-full object-contain p-1.5"
+            />
           </div>
 
           <div>

@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import Link from "next/link";
-import { Eye, EyeOff, Loader2, Wallet } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase/client";
 
@@ -31,19 +32,25 @@ export default function LoginPage() {
     if (!isValidGmail(cleanEmail)) {
       const errorMessage =
         "Please enter a valid Gmail address ending with @gmail.com.";
+
       setMessage(errorMessage);
+
       toast.error("Invalid email", {
         description: errorMessage,
       });
+
       return;
     }
 
     if (!cleanPassword) {
       const errorMessage = "Password is required.";
+
       setMessage(errorMessage);
+
       toast.error("Missing password", {
         description: errorMessage,
       });
+
       return;
     }
 
@@ -62,6 +69,7 @@ export default function LoginPage() {
       toast.dismiss(loadingToast);
 
       setMessage("Invalid email or password.");
+
       toast.error("Login failed", {
         description: "Please check your email and password.",
       });
@@ -86,8 +94,15 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-md rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/40 backdrop-blur-xl sm:p-8">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl border border-emerald-400/20 bg-emerald-500/10 text-emerald-300 shadow-lg shadow-emerald-500/10">
-            <Wallet className="h-8 w-8" />
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center overflow-hidden rounded-3xl border border-emerald-400/20 bg-emerald-500/10 shadow-lg shadow-emerald-500/10">
+            <Image
+              src="/logo.png"
+              alt="MyBudget logo"
+              width={64}
+              height={64}
+              priority
+              className="h-full w-full object-contain p-2"
+            />
           </div>
 
           <h1 className="text-2xl font-bold text-emerald-300">MyBudget</h1>
