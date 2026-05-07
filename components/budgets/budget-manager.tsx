@@ -39,7 +39,6 @@ const categories = [
   "Bills",
   "Shopping",
   "Allowance",
-  "Salary",
   "Health",
   "Other",
 ];
