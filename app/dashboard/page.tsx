@@ -110,41 +110,41 @@ export default async function DashboardPage() {
 
   const { now, month, year, monthStart, monthEnd } = getCurrentMonthDetails();
 
-  const [transactionsResult, recentTransactionsResult, budgetsResult, profileResult] =
-    await Promise.all([
-      supabase
-        .from("transactions")
-        .select(
-          "id, user_id, type, amount, category, note, transaction_date, created_at"
-        )
-        .eq("user_id", user.id)
-        .gte("transaction_date", monthStart)
-        .lte("transaction_date", monthEnd)
-        .order("transaction_date", { ascending: false })
-        .order("created_at", { ascending: false }),
+  const [
+    transactionsResult,
+    recentTransactionsResult,
+    budgetsResult,
+    profileResult,
+  ] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select(
+        "id, user_id, type, amount, category, note, transaction_date, created_at"
+      )
+      .eq("user_id", user.id)
+      .gte("transaction_date", monthStart)
+      .lte("transaction_date", monthEnd)
+      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: false }),
 
-      supabase
-        .from("transactions")
-        .select("id, type, amount, category, note, transaction_date, created_at")
-        .eq("user_id", user.id)
-        .order("transaction_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(5),
+    supabase
+      .from("transactions")
+      .select("id, type, amount, category, note, transaction_date, created_at")
+      .eq("user_id", user.id)
+      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(5),
 
-      supabase
-        .from("budgets")
-        .select("id, user_id, category, amount, month, year, created_at")
-        .eq("user_id", user.id)
-        .eq("month", month)
-        .eq("year", year)
-        .order("category", { ascending: true }),
+    supabase
+      .from("budgets")
+      .select("id, user_id, category, amount, month, year, created_at")
+      .eq("user_id", user.id)
+      .eq("month", month)
+      .eq("year", year)
+      .order("category", { ascending: true }),
 
-      supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", user.id)
-        .maybeSingle(),
-    ]);
+    supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
+  ]);
 
   if (transactionsResult.error) {
     throw new Error(transactionsResult.error.message);
@@ -181,7 +181,9 @@ export default async function DashboardPage() {
     0
   );
 
-  const budgetUsed = monthlyBudget > 0 ? (totalExpenses / monthlyBudget) * 100 : 0;
+  const budgetUsed =
+    monthlyBudget > 0 ? (totalExpenses / monthlyBudget) * 100 : 0;
+
   const alertType = getBudgetStatus(budgetUsed, monthlyBudget > 0);
 
   const expenseCategoryMap = new Map<string, number>();
@@ -250,8 +252,8 @@ export default async function DashboardPage() {
             </h1>
 
             <p className="mt-2 max-w-2xl text-sm text-slate-400">
-              Monitor your income, expenses, budget usage, category spending,
-              and recent activity for the current month.
+              Monitor your income, expenses, remaining balance, category
+              spending, and recent activity for the current month.
             </p>
           </div>
 
@@ -263,57 +265,97 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {alertType !== "safe" && alertType !== "none" && (
-          <div
-            className={`mb-6 rounded-3xl border p-5 shadow-2xl shadow-black/20 ${
-              alertType === "exceeded"
-                ? "border-red-500/30 bg-red-500/10 text-red-100"
-                : "border-amber-500/30 bg-amber-500/10 text-amber-100"
-            }`}
-          >
+        <div
+          className={`mb-6 overflow-hidden rounded-3xl border shadow-2xl shadow-black/20 ${
+            alertType === "exceeded"
+              ? "border-red-500/30 bg-red-500/10"
+              : alertType === "warning"
+                ? "border-amber-500/30 bg-amber-500/10"
+                : alertType === "none"
+                  ? "border-sky-500/30 bg-sky-500/10"
+                  : "border-emerald-500/30 bg-emerald-500/10"
+          }`}
+        >
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10">
+              <div
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
+                  alertType === "exceeded"
+                    ? "bg-red-500/20 text-red-200"
+                    : alertType === "warning"
+                      ? "bg-amber-500/20 text-amber-200"
+                      : alertType === "none"
+                        ? "bg-sky-500/20 text-sky-200"
+                        : "bg-emerald-500/20 text-emerald-200"
+                }`}
+              >
                 <BellRing className="h-5 w-5" />
               </div>
 
               <div>
-                <h2 className="font-semibold">
+                <h2
+                  className={`font-semibold ${
+                    alertType === "exceeded"
+                      ? "text-red-100"
+                      : alertType === "warning"
+                        ? "text-amber-100"
+                        : alertType === "none"
+                          ? "text-sky-100"
+                          : "text-emerald-100"
+                  }`}
+                >
                   {alertType === "exceeded"
-                    ? "Budget exceeded"
-                    : "Budget warning"}
+                    ? "Budget limit exceeded"
+                    : alertType === "warning"
+                      ? "Budget usage warning"
+                      : alertType === "none"
+                        ? "No budget created yet"
+                        : "Your spending is under control"}
                 </h2>
 
-                <p className="mt-1 text-sm opacity-90">
+                <p
+                  className={`mt-1 text-sm ${
+                    alertType === "exceeded"
+                      ? "text-red-100/80"
+                      : alertType === "warning"
+                        ? "text-amber-100/80"
+                        : alertType === "none"
+                          ? "text-sky-100/80"
+                          : "text-emerald-100/80"
+                  }`}
+                >
                   {alertType === "exceeded"
-                    ? "You have already spent more than your total monthly budget."
-                    : `You have used ${budgetUsed.toFixed(
-                        0
-                      )}% of your total monthly budget.`}
+                    ? "Your expenses are already higher than your total monthly budget."
+                    : alertType === "warning"
+                      ? `You already used ${budgetUsed.toFixed(
+                          0
+                        )}% of your total budget. Review your spending before it exceeds the limit.`
+                      : alertType === "none"
+                        ? "Set category budgets to activate smarter budget monitoring and alerts."
+                        : "You are still within your monthly budget range. Keep tracking your transactions regularly."}
                 </p>
               </div>
             </div>
-          </div>
-        )}
 
-        {alertType === "none" && (
-          <div className="mb-6 rounded-3xl border border-sky-500/30 bg-sky-500/10 p-5 text-sky-100 shadow-2xl shadow-black/20">
-            <div className="flex gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10">
-                <WalletCards className="h-5 w-5" />
-              </div>
-
-              <div>
-                <h2 className="font-semibold">No budget set yet</h2>
-                <p className="mt-1 text-sm opacity-90">
-                  Create category budgets to activate monthly budget alerts and
-                  dashboard charts.
-                </p>
-              </div>
+            <div
+              className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
+                alertType === "exceeded"
+                  ? "border-red-500/20 bg-red-500/10 text-red-200"
+                  : alertType === "warning"
+                    ? "border-amber-500/20 bg-amber-500/10 text-amber-200"
+                    : alertType === "none"
+                      ? "border-sky-500/20 bg-sky-500/10 text-sky-200"
+                      : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+              }`}
+            >
+              {alertType === "none"
+                ? "Action Needed"
+                : `${budgetUsed.toFixed(0)}% Used`}
             </div>
           </div>
-        )}
+        </div>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-3">
           <DashboardCard
             title="Total Income"
             value={formatMoney(totalIncome)}
@@ -335,16 +377,6 @@ export default async function DashboardPage() {
             icon={<PiggyBank className="h-5 w-5" />}
             helper="Income minus expenses"
             danger={balance < 0}
-          />
-
-          <DashboardCard
-            title="Monthly Budget"
-            value={formatMoney(monthlyBudget)}
-            icon={<WalletCards className="h-5 w-5" />}
-            helper={
-              monthlyBudget > 0 ? `${budgetUsed.toFixed(0)}% used` : "Not set"
-            }
-            danger={budgetUsed >= 100}
           />
         </section>
 
