@@ -65,50 +65,60 @@ export default async function ReportsPage() {
 
   const { month, year, monthStart, monthEnd } = getCurrentMonthDetails();
 
-  const { data: transactions, error: transactionsError } = await supabase
-    .from("transactions")
-    .select(
-      "id, user_id, type, amount, category, note, transaction_date, created_at"
-    )
-    .eq("user_id", user.id)
-    .gte("transaction_date", monthStart)
-    .lte("transaction_date", monthEnd)
-    .order("transaction_date", { ascending: false })
-    .order("created_at", { ascending: false });
+  const [transactionsResult, budgetsResult, profileResult] = await Promise.all([
+    supabase
+      .from("transactions")
+      .select(
+        "id, user_id, type, amount, category, note, transaction_date, created_at"
+      )
+      .eq("user_id", user.id)
+      .gte("transaction_date", monthStart)
+      .lte("transaction_date", monthEnd)
+      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: false }),
 
-  if (transactionsError) {
-    throw new Error(transactionsError.message);
+    supabase
+      .from("budgets")
+      .select("id, user_id, category, amount, month, year, created_at")
+      .eq("user_id", user.id)
+      .eq("month", month)
+      .eq("year", year)
+      .order("category", { ascending: true }),
+
+    supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
+
+  if (transactionsResult.error) {
+    throw new Error(transactionsResult.error.message);
   }
 
-  const { data: budgets, error: budgetsError } = await supabase
-    .from("budgets")
-    .select("id, user_id, category, amount, month, year, created_at")
-    .eq("user_id", user.id)
-    .eq("month", month)
-    .eq("year", year)
-    .order("category", { ascending: true });
-
-  if (budgetsError) {
-    throw new Error(budgetsError.message);
+  if (budgetsResult.error) {
+    throw new Error(budgetsResult.error.message);
   }
 
-const userDisplayName =
-  user.user_metadata?.full_name ||
-  user.user_metadata?.name ||
-  user.email?.split("@")[0] ||
-  "user";
+  const userDisplayName =
+    profileResult.data?.full_name ||
+    user.user_metadata?.full_name ||
+    user.user_metadata?.name ||
+    user.email?.split("@")[0] ||
+    "user";
 
-return (
-  <AppShell>
-    <ReportManager
-      userId={user.id}
-      userDisplayName={userDisplayName}
-      initialMonth={month}
-      initialYear={year}
-      initialTransactions={(transactions ?? []) as ReportTransaction[]}
-      initialBudgets={(budgets ?? []) as ReportBudget[]}
-    />
-  </AppShell>
-
+  return (
+    <AppShell>
+      <ReportManager
+        userId={user.id}
+        userDisplayName={userDisplayName}
+        initialMonth={month}
+        initialYear={year}
+        initialTransactions={
+          (transactionsResult.data ?? []) as ReportTransaction[]
+        }
+        initialBudgets={(budgetsResult.data ?? []) as ReportBudget[]}
+      />
+    </AppShell>
   );
 }
