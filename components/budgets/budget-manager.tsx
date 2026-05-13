@@ -7,6 +7,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Edit,
+  Eye,
   Plus,
   Search,
   Target,
@@ -16,12 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type {
-  Dispatch,
-  FormEvent,
-  ReactNode,
-  SetStateAction,
-} from "react";
+import type { Dispatch, FormEvent, ReactNode, SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -32,15 +28,41 @@ type FormState = {
   amount: string;
 };
 
-const categories = [
+type BudgetRow = Budget & {
+  category: string;
+  amount: number;
+  used: number;
+  remaining: number;
+  percentage: number;
+  progressValue: number;
+  status: ReturnType<typeof getStatusDetails>;
+};
+
+const defaultCategories = [
   "Food",
   "Transportation",
   "School",
   "Bills",
   "Shopping",
   "Health",
+  "Groceries",
+  "Rent",
+  "Utilities",
+  "Internet",
+  "Phone",
+  "Entertainment",
+  "Personal Care",
+  "Savings",
+  "Emergency",
+  "Family",
+  "Subscriptions",
+  "Travel",
+  "Pets",
+  "Laundry",
   "Other",
 ];
+
+const incomeCategories = ["Allowance", "Monthly Salary", "Other Income"];
 
 const monthOptions = [
   { value: 1, label: "January" },
@@ -58,7 +80,7 @@ const monthOptions = [
 ];
 
 const emptyForm: FormState = {
-  category: categories[0],
+  category: "Food",
   amount: "",
 };
 
@@ -90,6 +112,14 @@ function formatMonth(month: number, year: number) {
     month: "long",
     year: "numeric",
   }).format(new Date(year, month - 1, 1));
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 function normalizeCategory(category: string | null | undefined) {
@@ -142,6 +172,7 @@ export default function BudgetManager({
   initialTransactions,
   initialMonth,
   initialYear,
+  initialCategoryOptions = [],
 }: {
   userId: string;
   initialBudgets: Budget[];
@@ -165,11 +196,31 @@ export default function BudgetManager({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Budget | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<BudgetRow | null>(null);
+
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [customCategoryModalOpen, setCustomCategoryModalOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
 
   const [form, setForm] = useState<FormState>(emptyForm);
   const [loading, setLoading] = useState(false);
 
   const currentYear = getCurrentYear();
+
+  const categoryOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        [...defaultCategories, ...initialCategoryOptions, ...customCategories]
+          .filter(Boolean)
+          .map((category) => String(category).trim())
+          .filter((category) => !incomeCategories.includes(category))
+      )
+    ).sort((a, b) => {
+      if (a === "Other") return 1;
+      if (b === "Other") return -1;
+      return a.localeCompare(b);
+    });
+  }, [initialCategoryOptions, customCategories]);
 
   const yearOptions = useMemo(() => {
     const years = new Set<number>();
@@ -183,7 +234,7 @@ export default function BudgetManager({
     return Array.from(years).sort((a, b) => b - a);
   }, [budgets, currentYear, initialYear, selectedYear]);
 
-  const budgetRows = useMemo(() => {
+  const budgetRows = useMemo<BudgetRow[]>(() => {
     return budgets.map((budget) => {
       const category = normalizeCategory(budget.category);
 
@@ -191,7 +242,8 @@ export default function BudgetManager({
         .filter(
           (transaction) =>
             transaction.type === "expense" &&
-            normalizeCategory(transaction.category) === category
+            normalizeCategory(transaction.category).toLowerCase() ===
+              category.toLowerCase()
         )
         .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
 
@@ -228,6 +280,23 @@ export default function BudgetManager({
       return matchesSearch && matchesStatus;
     });
   }, [budgetRows, search, statusFilter]);
+
+  const historyTransactions = useMemo(() => {
+    if (!historyTarget) return [];
+
+    return transactions
+      .filter(
+        (transaction) =>
+          transaction.type === "expense" &&
+          normalizeCategory(transaction.category).toLowerCase() ===
+            historyTarget.category.toLowerCase()
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.transaction_date).getTime() -
+          new Date(a.transaction_date).getTime()
+      );
+  }, [historyTarget, transactions]);
 
   const totalBudget = budgetRows.reduce((sum, item) => sum + item.amount, 0);
   const totalUsed = budgetRows.reduce((sum, item) => sum + item.used, 0);
@@ -295,6 +364,7 @@ export default function BudgetManager({
     setSelectedYear(year);
     setSearch("");
     setStatusFilter("all");
+    setHistoryTarget(null);
 
     toast.success("Budgets loaded", {
       id: toastId,
@@ -307,7 +377,7 @@ export default function BudgetManager({
   function openAddModal() {
     setEditingBudget(null);
     setForm({
-      category: categories[0],
+      category: categoryOptions[0] ?? "Food",
       amount: "",
     });
     setModalOpen(true);
@@ -330,22 +400,65 @@ export default function BudgetManager({
     setForm(emptyForm);
   }
 
+  function handleCategoryChange(category: string) {
+    if (category === "Other") {
+      setCustomCategoryModalOpen(true);
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      category,
+    }));
+  }
+
+  function addCustomCategory() {
+    const category = newCategory.trim();
+
+    if (!category) {
+      toast.error("Missing category", {
+        description: "Please enter a custom category name.",
+      });
+      return;
+    }
+
+    const alreadyExists = categoryOptions.some(
+      (item) => item.toLowerCase() === category.toLowerCase()
+    );
+
+    if (alreadyExists) {
+      toast.error("Category already exists", {
+        description: `${category} is already in your category list.`,
+      });
+      return;
+    }
+
+    setCustomCategories((current) =>
+      [...current, category].sort((a, b) => a.localeCompare(b))
+    );
+
+    setForm((current) => ({
+      ...current,
+      category,
+    }));
+
+    setNewCategory("");
+    setCustomCategoryModalOpen(false);
+
+    toast.success("Category added", {
+      description: `${category} is now available for budgets.`,
+    });
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     const category = form.category.trim();
     const amount = Number(form.amount);
 
-    if (!category) {
+    if (!category || category === "Other") {
       toast.error("Missing category", {
-        description: "Please select a budget category.",
-      });
-      return;
-    }
-
-    if (!categories.includes(category)) {
-      toast.error("Invalid category", {
-        description: "Please choose a category from the dropdown.",
+        description: "Please select or create a budget category.",
       });
       return;
     }
@@ -650,14 +763,14 @@ export default function BudgetManager({
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-white/10">
-          <div className="hidden grid-cols-8 bg-white/5 px-4 py-3 text-xs font-medium uppercase tracking-wide text-slate-400 md:grid">
+          <div className="hidden grid-cols-9 bg-white/5 px-4 py-3 text-xs font-medium uppercase tracking-wide text-slate-400 md:grid">
             <span>Category</span>
             <span className="text-right">Budget</span>
             <span className="text-right">Used</span>
             <span className="text-right">Remaining</span>
             <span className="col-span-2">Progress</span>
             <span>Status</span>
-            <span className="text-right">Actions</span>
+            <span className="col-span-2 text-right">Actions</span>
           </div>
 
           {filteredBudgetRows.length === 0 ? (
@@ -677,7 +790,7 @@ export default function BudgetManager({
             filteredBudgetRows.map((budget) => (
               <div
                 key={budget.id}
-                className={`grid gap-4 border-t px-4 py-5 text-sm md:grid-cols-8 md:items-center ${budget.status.cardClass} border-white/10`}
+                className={`grid gap-4 border-t px-4 py-5 text-sm md:grid-cols-9 md:items-center ${budget.status.cardClass} border-white/10`}
               >
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
@@ -748,12 +861,21 @@ export default function BudgetManager({
                   </span>
                 </div>
 
-                <div>
+                <div className="md:col-span-2">
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
                     Actions
                   </p>
 
-                  <div className="mt-2 flex gap-2 md:mt-0 md:justify-end">
+                  <div className="mt-2 flex flex-wrap gap-2 md:mt-0 md:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryTarget(budget)}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
+                    >
+                      <Eye className="h-4 w-4" />
+                      History
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => openEditModal(budget)}
@@ -784,11 +906,36 @@ export default function BudgetManager({
           title={editingBudget ? "Edit Budget" : "Add Budget"}
           form={form}
           setForm={setForm}
+          categoryOptions={categoryOptions}
           selectedMonth={selectedMonth}
           selectedYear={selectedYear}
           loading={loading}
           onClose={closeModal}
           onSubmit={handleSubmit}
+          onCategoryChange={handleCategoryChange}
+        />
+      )}
+
+      {historyTarget && (
+        <ExpenseHistoryModal
+          budget={historyTarget}
+          transactions={historyTransactions}
+          selectedMonth={selectedMonth}
+          selectedYear={selectedYear}
+          onClose={() => setHistoryTarget(null)}
+        />
+      )}
+
+      {customCategoryModalOpen && (
+        <CustomCategoryModal
+          value={newCategory}
+          loading={loading}
+          onChange={setNewCategory}
+          onClose={() => {
+            setNewCategory("");
+            setCustomCategoryModalOpen(false);
+          }}
+          onAdd={addCustomCategory}
         />
       )}
 
@@ -850,24 +997,28 @@ function BudgetModal({
   title,
   form,
   setForm,
+  categoryOptions,
   selectedMonth,
   selectedYear,
   loading,
   onClose,
   onSubmit,
+  onCategoryChange,
 }: {
   title: string;
   form: FormState;
   setForm: Dispatch<SetStateAction<FormState>>;
+  categoryOptions: string[];
   selectedMonth: number;
   selectedYear: number;
   loading: boolean;
   onClose: () => void;
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
+  onCategoryChange: (category: string) => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
+      <div className="mx-auto my-4 w-full max-w-lg rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
         <div className="mb-5 flex items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-white">{title}</h2>
@@ -895,26 +1046,20 @@ function BudgetModal({
 
             <select
               value={form.category}
-              onChange={(e) =>
-                setForm((current) => ({
-                  ...current,
-                  category: e.target.value,
-                }))
-              }
+              onChange={(e) => onCategoryChange(e.target.value)}
               required
               disabled={loading}
               className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
             >
-              {categories.map((category) => (
+              {categoryOptions.map((category) => (
                 <option key={category} value={category}>
-                  {category}
+                  {category === "Other" ? "Other / Add custom category" : category}
                 </option>
               ))}
             </select>
 
             <p className="mt-2 text-xs text-slate-500">
-              Budgets use the same categories as Transactions for accurate
-              matching.
+              Choose Other to add a custom category.
             </p>
           </div>
 
@@ -970,6 +1115,193 @@ function BudgetModal({
   );
 }
 
+function ExpenseHistoryModal({
+  budget,
+  transactions,
+  selectedMonth,
+  selectedYear,
+  onClose,
+}: {
+  budget: BudgetRow;
+  transactions: BudgetTransaction[];
+  selectedMonth: number;
+  selectedYear: number;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
+      <div className="mx-auto my-4 w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-emerald-400">
+              Expense History
+            </p>
+            <h2 className="mt-1 text-xl font-bold text-white">
+              {budget.category}
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Expenses that affected this budget for{" "}
+              {formatMonth(selectedMonth, selectedYear)}.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-white/10 hover:text-white"
+            aria-label="Close history modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mb-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs text-slate-500">Budget</p>
+            <p className="mt-1 font-semibold text-white">
+              {formatMoney(budget.amount)}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs text-slate-500">Total Used</p>
+            <p className="mt-1 font-semibold text-white">
+              {formatMoney(budget.used)}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs text-slate-500">Remaining</p>
+            <p
+              className={`mt-1 font-semibold ${
+                budget.remaining < 0 ? "text-red-300" : "text-emerald-300"
+              }`}
+            >
+              {formatMoney(budget.remaining)}
+            </p>
+          </div>
+        </div>
+
+        <div className="max-h-[55vh] overflow-y-auto rounded-2xl border border-white/10">
+          {transactions.length === 0 ? (
+            <div className="px-4 py-10 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-slate-400">
+                <CalendarDays className="h-5 w-5" />
+              </div>
+
+              <h3 className="mt-4 font-semibold text-white">
+                No expenses yet
+              </h3>
+              <p className="mt-1 text-sm text-slate-400">
+                No {budget.category} expenses were found for this month.
+              </p>
+            </div>
+          ) : (
+            transactions.map((transaction) => (
+              <div
+                key={transaction.id}
+                className="flex flex-col gap-3 border-t border-white/10 px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-semibold text-white">
+                    {normalizeCategory(transaction.category)}
+                  </p>
+                  <p className="text-sm text-slate-400">
+                    {formatDate(transaction.transaction_date)}
+                  </p>
+                </div>
+
+                <p className="text-base font-bold text-red-300">
+                  -{formatMoney(transaction.amount)}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomCategoryModal({
+  value,
+  loading,
+  onChange,
+  onClose,
+  onAdd,
+}: {
+  value: string;
+  loading: boolean;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onAdd: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[110] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
+      <div className="mx-auto my-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-white">
+              Add Custom Category
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Create a category that is not listed yet.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+            aria-label="Close custom category modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Example: Laundry, Pets, Travel"
+          disabled={loading}
+          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
+        />
+
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={loading}
+            className="rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Add Category
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DeleteBudgetModal({
   budget,
   selectedMonth,
@@ -988,8 +1320,8 @@ function DeleteBudgetModal({
   const category = normalizeCategory(budget.category);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
+      <div className="mx-auto my-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 text-red-300">
           <Trash2 className="h-6 w-6" />
         </div>
