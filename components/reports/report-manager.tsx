@@ -7,7 +7,6 @@ import {
   CalendarDays,
   CheckCircle2,
   Download,
-  FileText,
   Loader2,
   TrendingDown,
   TrendingUp,
@@ -233,9 +232,7 @@ export default function ReportManager({
     years.add(initialYear);
     years.add(selectedYear);
 
-    budgets.forEach((budget) => {
-      years.add(Number(budget.year));
-    });
+    budgets.forEach((budget) => years.add(Number(budget.year)));
 
     transactions.forEach((transaction) => {
       years.add(new Date(transaction.transaction_date).getFullYear());
@@ -470,15 +467,13 @@ export default function ReportManager({
     });
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 700));
-
       const summaryRows = [
         ["Prepared For", userDisplayName],
         ["Report Month", reportMonth],
         ["Total Income", reportSummary.totalIncome.toFixed(2)],
         ["Total Expenses", reportSummary.totalExpenses.toFixed(2)],
-        ["Total Budget", reportSummary.totalBudget.toFixed(2)],
         ["Net Balance", reportSummary.netBalance.toFixed(2)],
+        ["Total Budget", reportSummary.totalBudget.toFixed(2)],
         [
           "Budget Usage",
           reportSummary.budgetUsagePercentage === null
@@ -534,7 +529,7 @@ export default function ReportManager({
       ]);
 
       const csvSections = [
-        ["LOMONGGO MONTHLY FINANCIAL REPORT"],
+        ["MYBUDGET MONTHLY FINANCIAL REPORT"],
         [],
         ["SUMMARY"],
         ...summaryRows,
@@ -588,8 +583,8 @@ export default function ReportManager({
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Review income, expenses, budgets, spending categories, and download
-            a monthly financial report.
+            Review income, expenses, remaining balance, category spending, and
+            budget usage for the selected month.
           </p>
         </div>
 
@@ -621,6 +616,7 @@ export default function ReportManager({
               <h2 className="font-semibold text-yellow-100">
                 Report attention needed
               </h2>
+
               <p className="mt-1 text-sm text-yellow-200/80">
                 {reportSummary.warningBudgets > 0 &&
                   `${reportSummary.warningBudgets} budget near the limit. `}
@@ -636,7 +632,7 @@ export default function ReportManager({
         </div>
       )}
 
-      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="mb-6 grid gap-4 md:grid-cols-3">
         <SummaryCard
           title="Total Income"
           value={formatMoney(reportSummary.totalIncome)}
@@ -663,17 +659,6 @@ export default function ReportManager({
           icon={<Wallet className="h-5 w-5" />}
           danger={reportSummary.netBalance < 0}
         />
-
-        <SummaryCard
-          title="Total Budget"
-          value={formatMoney(reportSummary.totalBudget)}
-          helper={
-            reportSummary.budgetUsagePercentage === null
-              ? "No budget set"
-              : `${reportSummary.budgetUsagePercentage.toFixed(0)}% used`
-          }
-          icon={<FileText className="h-5 w-5" />}
-        />
       </section>
 
       <section className="mb-6 rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20 backdrop-blur-xl">
@@ -682,6 +667,7 @@ export default function ReportManager({
             <h2 className="text-lg font-semibold text-white">
               Monthly Report Filter
             </h2>
+
             <p className="text-sm text-slate-400">
               Currently showing {formatMonth(selectedMonth, selectedYear)}
             </p>
@@ -737,6 +723,7 @@ export default function ReportManager({
             <h2 className="text-lg font-semibold text-white">
               Category Summary
             </h2>
+
             <p className="text-sm text-slate-400">
               Budget usage is calculated from expense transactions only.
             </p>
@@ -776,7 +763,9 @@ export default function ReportManager({
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
                       Category
                     </p>
+
                     <p className="font-semibold text-white">{item.category}</p>
+
                     {item.remaining !== null && (
                       <p
                         className={`mt-1 text-xs ${
@@ -794,6 +783,7 @@ export default function ReportManager({
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
                       Income
                     </p>
+
                     <p className="font-medium text-emerald-300 md:text-right">
                       {formatMoney(item.income)}
                     </p>
@@ -803,6 +793,7 @@ export default function ReportManager({
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
                       Expense
                     </p>
+
                     <p className="font-medium text-red-300 md:text-right">
                       {formatMoney(item.expense)}
                     </p>
@@ -812,6 +803,7 @@ export default function ReportManager({
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
                       Budget
                     </p>
+
                     <p className="font-medium text-slate-200 md:text-right">
                       {item.budget > 0 ? formatMoney(item.budget) : "No budget"}
                     </p>
@@ -870,9 +862,11 @@ export default function ReportManager({
                 <p className="text-sm text-slate-400">
                   Highest spending category
                 </p>
+
                 <h3 className="mt-2 text-2xl font-bold text-white">
                   {reportSummary.highestExpenseCategory.category}
                 </h3>
+
                 <p className="mt-2 text-sm text-red-300">
                   {formatMoney(reportSummary.highestExpenseCategory.expense)}
                 </p>
@@ -888,9 +882,11 @@ export default function ReportManager({
                 <p className="text-sm text-slate-400">
                   Highest income category
                 </p>
+
                 <h3 className="mt-2 text-2xl font-bold text-white">
                   {reportSummary.highestIncomeCategory.category}
                 </h3>
+
                 <p className="mt-2 text-sm text-emerald-300">
                   {formatMoney(reportSummary.highestIncomeCategory.income)}
                 </p>
@@ -899,6 +895,7 @@ export default function ReportManager({
 
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
               <p className="text-sm text-slate-400">Recommendation</p>
+
               <p className="mt-2 text-sm text-slate-300">
                 Check categories marked Warning, Exceeded, or No Budget before
                 setting next month&apos;s budget limits.
