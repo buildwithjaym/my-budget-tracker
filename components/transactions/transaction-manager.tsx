@@ -1,34 +1,51 @@
 "use client";
 
-import type { Transaction } from "@/app/transactions/page";
+import type {
+  Transaction,
+  TransactionBudget,
+} from "@/app/transactions/page";
 import { supabase } from "@/lib/supabase/client";
 import {
   ArrowDownLeft,
   ArrowUpRight,
   CalendarDays,
   Edit,
+  Eye,
   Plus,
   Search,
   Trash2,
+  WalletCards,
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-const expenseCategories = [
+const defaultExpenseCategories = [
   "Food",
   "Transportation",
   "School",
   "Bills",
   "Shopping",
   "Health",
+  "Groceries",
+  "Rent",
+  "Utilities",
+  "Internet",
+  "Phone",
+  "Entertainment",
+  "Personal Care",
+  "Savings",
+  "Emergency",
+  "Family",
+  "Subscriptions",
+  "Travel",
+  "Pets",
+  "Laundry",
   "Other",
 ];
 
 const incomeSources = ["Monthly Salary", "Allowance", "Other Income"];
-
-const allCategories = [...expenseCategories, ...incomeSources];
 
 type FormState = {
   type: "income" | "expense";
@@ -41,9 +58,9 @@ type FormState = {
 const emptyForm: FormState = {
   type: "expense",
   amount: "",
-  category: expenseCategories[0],
+  category: "Food",
   note: "",
-  transaction_date: new Date().toISOString().slice(0, 10),
+  transaction_date: getTodayDate(),
 };
 
 function formatMoney(value: number | string) {
@@ -62,21 +79,57 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatMonth(month: number, year: number) {
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+}
+
 function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function normalizeCategory(category: string | null | undefined) {
+  return category?.trim() || "Uncategorized";
+}
+
+function getMonthYearFromDate(value: string) {
+  const date = new Date(value);
+
+  return {
+    month: date.getMonth() + 1,
+    year: date.getFullYear(),
+  };
+}
+
+function sortTransactions(items: Transaction[]) {
+  return [...items].sort((a, b) => {
+    const dateCompare =
+      new Date(b.transaction_date).getTime() -
+      new Date(a.transaction_date).getTime();
+
+    if (dateCompare !== 0) return dateCompare;
+
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 }
 
 export default function TransactionManager({
   userId,
   initialTransactions,
+  initialBudgets,
 }: {
   userId: string;
   initialTransactions: Transaction[];
+  initialBudgets: TransactionBudget[];
 }) {
   const router = useRouter();
 
   const [transactions, setTransactions] =
     useState<Transaction[]>(initialTransactions);
+
+  const [budgets] = useState<TransactionBudget[]>(initialBudgets);
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">(
@@ -89,9 +142,58 @@ export default function TransactionManager({
     useState<Transaction | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
+  const [budgetHistoryTarget, setBudgetHistoryTarget] =
+    useState<Transaction | null>(null);
+
   const [loading, setLoading] = useState(false);
 
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [customCategoryModalOpen, setCustomCategoryModalOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
+
   const [form, setForm] = useState<FormState>(emptyForm);
+
+  const budgetCategories = useMemo(() => {
+    return budgets
+      .map((budget) => normalizeCategory(budget.category))
+      .filter((category) => category !== "Uncategorized");
+  }, [budgets]);
+
+  const expenseCategories = useMemo(() => {
+    return Array.from(
+      new Set(
+        [...defaultExpenseCategories, ...budgetCategories, ...customCategories]
+          .filter(Boolean)
+          .map((category) => String(category).trim())
+      )
+    ).sort((a, b) => {
+      if (a === "Other") return 1;
+      if (b === "Other") return -1;
+      return a.localeCompare(b);
+    });
+  }, [budgetCategories, customCategories]);
+
+  const allCategories = useMemo(() => {
+    return Array.from(new Set([...expenseCategories, ...incomeSources])).sort(
+      (a, b) => a.localeCompare(b)
+    );
+  }, [expenseCategories]);
+
+  const matchingBudget = useMemo(() => {
+    if (form.type !== "expense" || !form.transaction_date) return null;
+
+    const { month, year } = getMonthYearFromDate(form.transaction_date);
+
+    return (
+      budgets.find(
+        (budget) =>
+          normalizeCategory(budget.category).toLowerCase() ===
+            form.category.toLowerCase() &&
+          Number(budget.month) === month &&
+          Number(budget.year) === year
+      ) ?? null
+    );
+  }, [form.type, form.category, form.transaction_date, budgets]);
 
   const filteredTransactions = useMemo(() => {
     const searchValue = search.toLowerCase().trim();
@@ -123,12 +225,46 @@ export default function TransactionManager({
 
   const netBalance = totalIncome - totalExpenses;
 
+  function getBudgetForTransaction(transaction: Transaction) {
+    if (transaction.type !== "expense") return null;
+
+    const { month, year } = getMonthYearFromDate(transaction.transaction_date);
+
+    return (
+      budgets.find(
+        (budget) =>
+          normalizeCategory(budget.category).toLowerCase() ===
+            transaction.category.toLowerCase() &&
+          Number(budget.month) === month &&
+          Number(budget.year) === year
+      ) ?? null
+    );
+  }
+
+  function getBudgetUsedAmount(budget: TransactionBudget) {
+    return transactions
+      .filter((transaction) => {
+        const { month, year } = getMonthYearFromDate(
+          transaction.transaction_date
+        );
+
+        return (
+          transaction.type === "expense" &&
+          transaction.category.toLowerCase() ===
+            normalizeCategory(budget.category).toLowerCase() &&
+          month === Number(budget.month) &&
+          year === Number(budget.year)
+        );
+      })
+      .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+  }
+
   function openAddModal() {
     setEditingTransaction(null);
     setForm({
       type: "expense",
       amount: "",
-      category: expenseCategories[0],
+      category: expenseCategories[0] ?? "Food",
       note: "",
       transaction_date: getTodayDate(),
     });
@@ -163,6 +299,57 @@ export default function TransactionManager({
     }));
   }
 
+  function handleCategoryChange(category: string) {
+    if (category === "Other") {
+      setCustomCategoryModalOpen(true);
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      category,
+    }));
+  }
+
+  function addCustomCategory() {
+    const category = newCategory.trim();
+
+    if (!category) {
+      toast.error("Missing category", {
+        description: "Please enter a custom category name.",
+      });
+      return;
+    }
+
+    const alreadyExists = expenseCategories.some(
+      (item) => item.toLowerCase() === category.toLowerCase()
+    );
+
+    if (alreadyExists) {
+      toast.error("Category already exists", {
+        description: `${category} is already available.`,
+      });
+      return;
+    }
+
+    setCustomCategories((current) =>
+      [...current, category].sort((a, b) => a.localeCompare(b))
+    );
+
+    setForm((current) => ({
+      ...current,
+      type: "expense",
+      category,
+    }));
+
+    setNewCategory("");
+    setCustomCategoryModalOpen(false);
+
+    toast.success("Category added", {
+      description: `${category} can now be used for expense transactions.`,
+    });
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -176,12 +363,12 @@ export default function TransactionManager({
       return;
     }
 
-    if (!category) {
+    if (!category || category === "Other") {
       toast.error("Missing category", {
         description:
           form.type === "income"
             ? "Please select an income source."
-            : "Please select an expense category.",
+            : "Please select or create an expense category.",
       });
       return;
     }
@@ -205,16 +392,18 @@ export default function TransactionManager({
 
     setLoading(true);
 
+    const payload = {
+      type: form.type,
+      amount,
+      category,
+      note: form.note.trim() || null,
+      transaction_date: form.transaction_date,
+    };
+
     if (editingTransaction) {
       const { data, error } = await supabase
         .from("transactions")
-        .update({
-          type: form.type,
-          amount,
-          category,
-          note: form.note.trim() || null,
-          transaction_date: form.transaction_date,
-        })
+        .update(payload)
         .eq("id", editingTransaction.id)
         .eq("user_id", userId)
         .select()
@@ -229,15 +418,19 @@ export default function TransactionManager({
       }
 
       setTransactions((current) =>
-        current.map((item) =>
-          item.id === editingTransaction.id ? (data as Transaction) : item
+        sortTransactions(
+          current.map((item) =>
+            item.id === editingTransaction.id ? (data as Transaction) : item
+          )
         )
       );
 
       toast.success("Transaction updated", {
         description:
           form.type === "expense"
-            ? `${category} expense was updated. Budget progress will reflect this.`
+            ? matchingBudget
+              ? `${category} expense is connected to its budget.`
+              : `${category} expense was updated. No matching budget yet.`
             : `${category} income was updated successfully.`,
       });
     } else {
@@ -245,11 +438,7 @@ export default function TransactionManager({
         .from("transactions")
         .insert({
           user_id: userId,
-          type: form.type,
-          amount,
-          category,
-          note: form.note.trim() || null,
-          transaction_date: form.transaction_date,
+          ...payload,
         })
         .select()
         .single();
@@ -262,13 +451,17 @@ export default function TransactionManager({
         return;
       }
 
-      setTransactions((current) => [data as Transaction, ...current]);
+      setTransactions((current) =>
+        sortTransactions([data as Transaction, ...current])
+      );
 
       toast.success("Transaction added", {
         description:
           form.type === "expense"
-            ? `${category} expense was added. Budget progress will update.`
-            : `${category} income was added successfully.`,
+            ? matchingBudget
+              ? `${category} expense was added and connected to your budget.`
+              : `${category} expense was added. Add a matching budget to track it.`
+            : `${category} income was added to your records.`,
       });
     }
 
@@ -305,8 +498,8 @@ export default function TransactionManager({
     toast.success("Transaction deleted", {
       description:
         deleteTarget.type === "expense"
-          ? `${deleteTarget.category} expense was removed. Budget progress will update.`
-          : `${deleteTarget.category} income was removed successfully.`,
+          ? `${deleteTarget.category} expense was removed. Budget usage will update.`
+          : `${deleteTarget.category} income was removed from your records.`,
     });
 
     setLoading(false);
@@ -327,8 +520,8 @@ export default function TransactionManager({
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Record actual income and expenses. Only expense transactions are
-            used to calculate budget progress.
+            Record income and expenses. Expense categories are connected to
+            saved Budgets, so custom budget categories appear here.
           </p>
         </div>
 
@@ -353,8 +546,9 @@ export default function TransactionManager({
         <SummaryCard
           title="Total Expenses"
           value={formatMoney(totalExpenses)}
-          helper="Expenses used by budgets"
+          helper="Connected to budget usage"
           icon={<ArrowUpRight className="h-5 w-5" />}
+          danger={totalExpenses > totalIncome && totalIncome > 0}
         />
 
         <SummaryCard
@@ -362,6 +556,7 @@ export default function TransactionManager({
           value={formatMoney(netBalance)}
           helper="Income minus expenses"
           icon={<CalendarDays className="h-5 w-5" />}
+          danger={netBalance < 0}
         />
       </section>
 
@@ -416,19 +611,19 @@ export default function TransactionManager({
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-white/10">
-          <div className="hidden grid-cols-7 bg-white/5 px-4 py-3 text-xs font-medium uppercase tracking-wide text-slate-400 md:grid">
+          <div className="hidden grid-cols-8 bg-white/5 px-4 py-3 text-xs font-medium uppercase tracking-wide text-slate-400 md:grid">
             <span>Date</span>
             <span>Category / Source</span>
             <span>Type</span>
             <span className="col-span-2">Note</span>
             <span className="text-right">Amount</span>
-            <span className="text-right">Actions</span>
+            <span className="col-span-2 text-right">Actions</span>
           </div>
 
           {filteredTransactions.length === 0 ? (
             <div className="px-4 py-12 text-center">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 text-slate-400">
-                <CalendarDays className="h-6 w-6" />
+                <WalletCards className="h-6 w-6" />
               </div>
 
               <h3 className="mt-4 font-semibold text-white">
@@ -440,96 +635,125 @@ export default function TransactionManager({
               </p>
             </div>
           ) : (
-            filteredTransactions.map((transaction) => (
-              <div
-                key={transaction.id}
-                className="grid gap-3 border-t border-white/10 px-4 py-4 text-sm md:grid-cols-7 md:items-center"
-              >
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
-                    Date
-                  </p>
-                  <p className="text-slate-400">
-                    {formatDate(transaction.transaction_date)}
-                  </p>
-                </div>
+            filteredTransactions.map((transaction) => {
+              const connectedBudget = getBudgetForTransaction(transaction);
 
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
-                    Category / Source
-                  </p>
-                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
-                    {transaction.category}
-                  </span>
-                </div>
+              return (
+                <div
+                  key={transaction.id}
+                  className="grid gap-3 border-t border-white/10 px-4 py-4 text-sm md:grid-cols-8 md:items-center"
+                >
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                      Date
+                    </p>
+                    <p className="text-slate-400">
+                      {formatDate(transaction.transaction_date)}
+                    </p>
+                  </div>
 
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
-                    Type
-                  </p>
-                  <span
-                    className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-                      transaction.type === "income"
-                        ? "bg-emerald-500/10 text-emerald-300"
-                        : "bg-red-500/10 text-red-300"
-                    }`}
-                  >
-                    {transaction.type}
-                  </span>
-                </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                      Category / Source
+                    </p>
+                    <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
+                      {transaction.category}
+                    </span>
+                  </div>
 
-                <div className="md:col-span-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
-                    Note
-                  </p>
-                  <p className="line-clamp-2 text-slate-400">
-                    {transaction.note || "No note"}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
-                    Amount
-                  </p>
-                  <p
-                    className={`font-semibold md:text-right ${
-                      transaction.type === "income"
-                        ? "text-emerald-400"
-                        : "text-red-300"
-                    }`}
-                  >
-                    {transaction.type === "income" ? "+" : "-"}
-                    {formatMoney(transaction.amount)}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
-                    Actions
-                  </p>
-
-                  <div className="mt-2 flex gap-2 md:mt-0 md:justify-end">
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(transaction)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
-                      aria-label="Edit transaction"
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                      Type
+                    </p>
+                    <span
+                      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+                        transaction.type === "income"
+                          ? "bg-emerald-500/10 text-emerald-300"
+                          : "bg-red-500/10 text-red-300"
+                      }`}
                     >
-                      <Edit className="h-4 w-4" />
-                    </button>
+                      {transaction.type}
+                    </span>
+                  </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTarget(transaction)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 transition hover:bg-red-500/20"
-                      aria-label="Delete transaction"
+                  <div className="md:col-span-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                      Note
+                    </p>
+                    <p className="line-clamp-2 text-slate-400">
+                      {transaction.note || "No note"}
+                    </p>
+
+                    {transaction.type === "expense" && (
+                      <p
+                        className={`mt-1 text-xs ${
+                          connectedBudget
+                            ? "text-emerald-300"
+                            : "text-yellow-300"
+                        }`}
+                      >
+                        {connectedBudget
+                          ? "Connected to budget"
+                          : "No matching budget"}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                      Amount
+                    </p>
+                    <p
+                      className={`font-semibold md:text-right ${
+                        transaction.type === "income"
+                          ? "text-emerald-400"
+                          : "text-red-300"
+                      }`}
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                      {transaction.type === "income" ? "+" : "-"}
+                      {formatMoney(transaction.amount)}
+                    </p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500 md:hidden">
+                      Actions
+                    </p>
+
+                    <div className="mt-2 flex flex-wrap gap-2 md:mt-0 md:justify-end">
+                      {transaction.type === "expense" && (
+                        <button
+                          type="button"
+                          onClick={() => setBudgetHistoryTarget(transaction)}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
+                        >
+                          <Eye className="h-4 w-4" />
+                          Budget
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(transaction)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                        aria-label="Edit transaction"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(transaction)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 text-red-300 transition hover:bg-red-500/20"
+                        aria-label="Delete transaction"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </section>
@@ -540,9 +764,54 @@ export default function TransactionManager({
           form={form}
           setForm={setForm}
           loading={loading}
+          matchingBudget={matchingBudget}
+          expenseCategories={expenseCategories}
           onClose={closeModal}
           onSubmit={handleSubmit}
           onTypeChange={handleTypeChange}
+          onCategoryChange={handleCategoryChange}
+        />
+      )}
+
+      {budgetHistoryTarget && (
+        <BudgetConnectionModal
+          transaction={budgetHistoryTarget}
+          budget={getBudgetForTransaction(budgetHistoryTarget)}
+          usedAmount={
+            getBudgetForTransaction(budgetHistoryTarget)
+              ? getBudgetUsedAmount(getBudgetForTransaction(budgetHistoryTarget)!)
+              : 0
+          }
+          relatedTransactions={transactions.filter((transaction) => {
+            const budget = getBudgetForTransaction(budgetHistoryTarget);
+            if (!budget) return false;
+
+            const { month, year } = getMonthYearFromDate(
+              transaction.transaction_date
+            );
+
+            return (
+              transaction.type === "expense" &&
+              transaction.category.toLowerCase() ===
+                budgetHistoryTarget.category.toLowerCase() &&
+              month === Number(budget.month) &&
+              year === Number(budget.year)
+            );
+          })}
+          onClose={() => setBudgetHistoryTarget(null)}
+        />
+      )}
+
+      {customCategoryModalOpen && (
+        <CustomCategoryModal
+          value={newCategory}
+          loading={loading}
+          onChange={setNewCategory}
+          onClose={() => {
+            setNewCategory("");
+            setCustomCategoryModalOpen(false);
+          }}
+          onAdd={addCustomCategory}
         />
       )}
 
@@ -565,15 +834,29 @@ function SummaryCard({
   value,
   helper,
   icon,
+  danger = false,
 }: {
   title: string;
   value: string;
   helper: string;
   icon: React.ReactNode;
+  danger?: boolean;
 }) {
   return (
-    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20 backdrop-blur-xl">
-      <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-300">
+    <div
+      className={`rounded-3xl border p-5 shadow-2xl shadow-black/20 backdrop-blur-xl ${
+        danger
+          ? "border-red-500/20 bg-red-500/[0.04]"
+          : "border-white/10 bg-white/[0.04]"
+      }`}
+    >
+      <div
+        className={`mb-5 flex h-11 w-11 items-center justify-center rounded-2xl ${
+          danger
+            ? "bg-red-500/10 text-red-300"
+            : "bg-emerald-500/10 text-emerald-300"
+        }`}
+      >
         {icon}
       </div>
 
@@ -589,31 +872,37 @@ function TransactionModal({
   form,
   setForm,
   loading,
+  matchingBudget,
+  expenseCategories,
   onClose,
   onSubmit,
   onTypeChange,
+  onCategoryChange,
 }: {
   title: string;
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   loading: boolean;
+  matchingBudget: TransactionBudget | null;
+  expenseCategories: string[];
   onClose: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   onTypeChange: (type: "income" | "expense") => void;
+  onCategoryChange: (category: string) => void;
 }) {
   const activeCategories =
     form.type === "income" ? incomeSources : expenseCategories;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
+      <div className="mx-auto my-4 w-full max-w-lg rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
         <div className="mb-5 flex items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-white">{title}</h2>
             <p className="mt-1 text-sm text-slate-400">
               {form.type === "income"
-                ? "Record your monthly salary, allowance, or other income."
-                : "Record actual expenses that will be used by Budgets."}
+                ? "Record salary, allowance, or other income."
+                : "Record expenses that can update your Budget progress."}
             </p>
           </div>
 
@@ -622,7 +911,6 @@ function TransactionModal({
             onClick={onClose}
             disabled={loading}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
-            aria-label="Close modal"
           >
             <X className="h-5 w-5" />
           </button>
@@ -681,28 +969,17 @@ function TransactionModal({
 
             <select
               value={form.category}
-              onChange={(e) =>
-                setForm((current) => ({
-                  ...current,
-                  category: e.target.value,
-                }))
-              }
+              onChange={(e) => onCategoryChange(e.target.value)}
               required
               disabled={loading}
               className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
             >
               {activeCategories.map((category) => (
                 <option key={category} value={category}>
-                  {category}
+                  {category === "Other" ? "Other / Add custom category" : category}
                 </option>
               ))}
             </select>
-
-            <p className="mt-2 text-xs text-slate-500">
-              {form.type === "income"
-                ? "Income records affect total income and net balance only."
-                : "Expense records are matched with Budgets to calculate spending progress."}
-            </p>
           </div>
 
           <div>
@@ -740,12 +1017,18 @@ function TransactionModal({
             className={`rounded-2xl border p-4 text-sm ${
               form.type === "income"
                 ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
-                : "border-yellow-500/20 bg-yellow-500/10 text-yellow-200"
+                : matchingBudget
+                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                  : "border-yellow-500/20 bg-yellow-500/10 text-yellow-200"
             }`}
           >
             {form.type === "income"
-              ? "Income increases your total income and net balance. It does not affect Budgets."
-              : "Expenses are used by Budgets to calculate category progress for the selected month."}
+              ? "Income increases total income and net balance. It does not affect Budgets."
+              : matchingBudget
+                ? `This expense matches your ${normalizeCategory(
+                    matchingBudget.category
+                  )} budget worth ${formatMoney(matchingBudget.amount)}.`
+                : "No matching budget found for this category and date. You can still save this expense."}
           </div>
 
           <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
@@ -772,6 +1055,215 @@ function TransactionModal({
   );
 }
 
+function BudgetConnectionModal({
+  transaction,
+  budget,
+  usedAmount,
+  relatedTransactions,
+  onClose,
+}: {
+  transaction: Transaction;
+  budget: TransactionBudget | null;
+  usedAmount: number;
+  relatedTransactions: Transaction[];
+  onClose: () => void;
+}) {
+  const budgetAmount = Number(budget?.amount ?? 0);
+  const remaining = budgetAmount - usedAmount;
+  const percentage = budgetAmount > 0 ? (usedAmount / budgetAmount) * 100 : 0;
+
+  return (
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
+      <div className="mx-auto my-4 w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-emerald-400">
+              Budget Connection
+            </p>
+            <h2 className="mt-1 text-xl font-bold text-white">
+              {transaction.category}
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              This shows how this transaction connects to its matching budget.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-white/10 hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {!budget ? (
+          <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-200">
+            No matching budget was found for this transaction category and
+            month. Create a budget for {transaction.category} to track this
+            expense.
+          </div>
+        ) : (
+          <>
+            <div className="mb-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-xs text-slate-500">Budget Month</p>
+                <p className="mt-1 font-semibold text-white">
+                  {formatMonth(Number(budget.month), Number(budget.year))}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-xs text-slate-500">Budget Limit</p>
+                <p className="mt-1 font-semibold text-white">
+                  {formatMoney(budgetAmount)}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-xs text-slate-500">Remaining</p>
+                <p
+                  className={`mt-1 font-semibold ${
+                    remaining < 0 ? "text-red-300" : "text-emerald-300"
+                  }`}
+                >
+                  {formatMoney(remaining)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-semibold text-white">
+                  Budget Usage
+                </p>
+                <p className="text-sm font-semibold text-slate-300">
+                  {percentage.toFixed(0)}%
+                </p>
+              </div>
+
+              <div className="h-3 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={`h-full rounded-full ${
+                    percentage >= 100
+                      ? "bg-red-500"
+                      : percentage >= 80
+                        ? "bg-yellow-500"
+                        : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${Math.min(percentage, 100)}%` }}
+                />
+              </div>
+
+              <p className="mt-2 text-sm text-slate-400">
+                Used {formatMoney(usedAmount)} out of {formatMoney(budgetAmount)}.
+              </p>
+            </div>
+
+            <div className="max-h-[45vh] overflow-y-auto rounded-2xl border border-white/10">
+              {relatedTransactions.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex flex-col gap-2 border-t border-white/10 px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="font-semibold text-white">{item.category}</p>
+                    <p className="text-sm text-slate-400">
+                      {formatDate(item.transaction_date)}
+                    </p>
+                  </div>
+
+                  <p className="font-bold text-red-300">
+                    -{formatMoney(item.amount)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomCategoryModal({
+  value,
+  loading,
+  onChange,
+  onClose,
+  onAdd,
+}: {
+  value: string;
+  loading: boolean;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onAdd: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[110] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
+      <div className="mx-auto my-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-white">
+              Add Custom Category
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Create a new expense category for this transaction.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Example: Laundry, Pets, Travel"
+          disabled={loading}
+          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
+        />
+
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={loading}
+            className="rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Add Category
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DeleteModal({
   transaction,
   loading,
@@ -784,8 +1276,8 @@ function DeleteModal({
   onDelete: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
+      <div className="mx-auto my-4 w-full max-w-md rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
         <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 text-red-300">
           <Trash2 className="h-6 w-6" />
         </div>
