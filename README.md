@@ -1,139 +1,167 @@
-# MyBudget
+# MyBudget: Personal Expense Tracking and Budget Alert System
 
-MyBudget is a personal expense tracking and budget alert system built with **Next.js**, **Supabase**, **Tailwind CSS**, and **Recharts**.
+## BS Computer Science Thesis Project
 
-It helps users record income, track expenses, set monthly category budgets, monitor spending, receive budget alerts, view dashboard summaries, manage their profile, and download monthly financial reports.
+MyBudget is a modern personal finance web application designed to help users manage income, expenses, monthly budgets, spending behavior, and financial monitoring through a connected budgeting workflow.
+
+The system was developed using:
+- Next.js
+- TypeScript
+- Supabase
+- PostgreSQL
+- Tailwind CSS
+- Recharts
+- Lucide React
+- Sonner Toast Notifications
+
+Unlike traditional expense trackers that only store financial records, MyBudget connects Transactions, Budgets, Dashboard Analytics, Reports, Alerts, and Expense History into one integrated financial management system.
+
+The application focuses on:
+- Practical budgeting
+- Real-time financial monitoring
+- Connected budget calculations
+- Modern responsive UI/UX
+- Financial awareness
+- Expense transparency
 
 ---
 
-## Project Goal
+# Project Information
 
-The goal of MyBudget is to give users a simple and practical way to manage their personal finances.
+| Category | Details |
+|---|---|
+| Project Title | MyBudget: Personal Expense Tracking and Budget Alert System |
+| Project Type | BS Computer Science Thesis Project |
+| System Type | Web Application |
+| Deployment Platform | Vercel |
+| Mobile Wrapper Support | Median.co |
+| Frontend Framework | Next.js App Router |
+| Backend Service | Supabase |
+| Database | PostgreSQL |
+| Authentication | Supabase Auth |
+| Styling | Tailwind CSS |
+| Charts & Analytics | Recharts |
+| Notifications | Sonner |
+| Icons | Lucide React |
 
-Many people struggle to monitor their daily spending because expenses are often forgotten, recorded late, or scattered across notes and messages. MyBudget solves this by giving users one organized place to record income, track expenses, set monthly budgets, and quickly see if they are still within their spending limit.
+---
 
-The project focuses on the core needs of personal budgeting:
+# Project Overview
 
+Many individuals struggle with managing finances because:
+- Expenses are not monitored properly
+- Budgets are manually computed
+- Financial records are scattered
+- Overspending is detected too late
+- Spending history is difficult to analyze
+
+Most simple expense trackers only allow users to save records without connecting expenses to actual budgets.
+
+MyBudget solves this problem by providing:
+- Connected budgeting logic
+- Automatic budget calculations
+- Expense tracking
+- Financial analytics
+- Smart alerts
+- Spending history monitoring
+- Downloadable financial reports
+
+The system creates a centralized financial management platform where users can:
 - Track income
-- Track expenses
-- Set monthly budgets
-- Warn users before overspending
-- Show clear summaries
-- Download monthly reports
-- Manage basic profile information
-
-MyBudget is intentionally simple. It does not include bank integrations, investment tools, AI predictions, or complex financial forecasting.
-
----
-
-## Project Objectives
-
-This system aims to:
-
-1. Provide secure user registration and login.
-2. Allow users to manually record income and expenses.
-3. Separate income sources from expense categories.
-4. Allow users to create monthly category-based budgets.
-5. Automatically compare expenses against budgets.
-6. Display budget warning and exceeded alerts.
-7. Show dashboard cards, charts, and recent transactions.
-8. Generate monthly financial summaries.
-9. Allow CSV report downloads.
-10. Support profile name and avatar management.
-11. Provide a responsive dark emerald interface with smooth animations.
+- Record expenses
+- Create monthly budgets
+- Monitor spending progress
+- Review expense history
+- Receive alerts
+- Analyze financial behavior
+- Export reports
 
 ---
 
-## Key Features
+# Main Goal of the System
 
-### Authentication
+The goal of MyBudget is to provide users with a practical, responsive, and user-friendly budgeting system that improves financial awareness and spending management.
 
-Users can create an account and log in securely using Supabase Authentication.
-
-Authentication includes:
-
-- Gmail validation
-- Password validation
-- Login redirect
-- Registration redirect
-- Loading states
-- Success and error toast notifications
+The project focuses on:
+- Connected financial workflows
+- Automated monitoring
+- Responsive modern interface
+- Financial summaries
+- Budget history tracking
+- Smart financial alerts
 
 ---
 
-### Transactions
+# Why This System Is Needed
 
-Transactions are used to record actual financial activity.
+Many existing budgeting methods are ineffective because:
+- Expenses are not tracked consistently
+- Spending records are scattered
+- Budgets are manually monitored
+- Users only realize overspending after it happens
+- Expense history is difficult to review
 
-Users can:
+MyBudget addresses these problems through:
+- Real-time budget monitoring
+- Automatic budget calculations
+- Expense history viewing
+- Budget-connected transactions
+- Category synchronization
+- Financial analytics
+- Downloadable reports
 
-- Add income
-- Add expenses
-- Edit transactions
-- Delete transactions
-- Search transactions
-- Filter by type, category, source, amount, note, or date
-
-Income sources:
-
-```txt
-Monthly Salary
-Allowance
-Other Income
-```
-
-Expense categories:
-
-```txt
-Food
-Transportation
-School
-Bills
-Shopping
-Health
-Other
-```
-
-Income affects total income and net balance.
-
-Expenses affect total expenses, budget usage, dashboard summaries, and reports.
+The system encourages users to become more financially aware and organized.
 
 ---
 
-### Budgets
+# Core Features
 
-Budgets are monthly spending limits assigned to expense categories.
+## 1. Budget ↔ Transaction Connection
 
-Users can:
+This is the strongest and most important feature of the system.
 
-- Create a budget before adding transactions
-- Edit budget amounts
-- Delete budgets
-- Filter budgets by month and year
-- View budget progress
-- See safe, warning, or exceeded status
-
-Budgets are only connected to expense categories because budgets monitor spending, not income.
+Transactions and Budgets are directly connected through:
+- Category
+- Month
+- Year
 
 Example:
 
 ```txt
-Food budget: ₱3,000
-Food expenses: ₱1,500
-Budget usage: 50%
-Status: Safe
+Food expense for May 2026
+→ automatically affects Food budget for May 2026
 ```
+
+This allows:
+- Real-time budget updates
+- Automatic calculations
+- Live budget progress
+- Financial tracking
+- Budget analytics
+- Accurate reports
+
+The system behaves like a real budgeting platform instead of isolated CRUD modules.
 
 ---
 
-### Budget Alerts
+## 2. Real-Time Budget Monitoring
 
-MyBudget automatically calculates how much of each budget has been used.
+Budgets automatically update whenever:
+- Expenses are added
+- Expenses are edited
+- Expenses are deleted
+
+Users can instantly see:
+- Used budget
+- Remaining budget
+- Budget percentage
+- Warning levels
+- Exceeded budgets
 
 Formula:
 
 ```txt
-budget usage = (expense used / budget amount) * 100
+budget usage = (expenses used / budget amount) × 100
 ```
 
 Alert levels:
@@ -144,61 +172,121 @@ Below 80% = Safe
 100% and above = Exceeded
 ```
 
-Budget alerts appear in:
-
-- Budget status badges
-- Budget progress bars
-- Dashboard alert banner
-- Reports summary
-- CSV report export
-
 ---
 
-### Dashboard
+## 3. Expense History Monitoring
 
-The dashboard shows the current month overview.
+One of the most important improvements in the system is the Expense History functionality.
 
-It displays:
+Users can:
+- View connected expenses
+- Review spending history
+- Analyze category expenses
+- Monitor spending behavior
+- See which transactions affected a budget
 
-- Total income
-- Total expenses
-- Remaining balance
-- Total monthly budget
-- Budget alert status
-- Recent transactions
-- Income vs expense chart
-- Expense by category chart
-- Budget usage chart
-
-The dashboard helps users quickly understand their current financial condition.
-
----
-
-### Reports
-
-The Reports page provides a monthly financial summary.
-
-Reports include:
-
-- User name
-- Report month and year
-- Total income
-- Total expenses
-- Total budget
-- Net balance
-- Budget usage percentage
-- Category summary
-- Transaction records
-
-Users can download the report as a CSV file.
-
-CSV filename format:
+Example workflow:
 
 ```txt
-user-name-report-yyyy-mm.csv
+Food Budget
+→ View connected Food expenses
+→ View expense amounts
+→ View expense dates
+→ View remaining budget
+→ Review overspending history
 ```
 
+The Expense History modal provides:
+- Connected transaction viewing
+- Category expense transparency
+- Real-time spending analysis
+
+This feature makes the budgeting workflow more realistic and useful.
+
+---
+
+## 4. Smart Budget Alerts
+
+The system automatically detects:
+- Near-limit budgets
+- Exceeded budgets
+- Categories without budgets
+
+Alerts appear in:
+- Dashboard
+- Budget cards
+- Reports
+- Expense History
+- Transaction indicators
+
+This helps users identify financial problems earlier.
+
+---
+
+## 5. Dashboard Analytics
+
+The dashboard provides a complete financial overview.
+
+Dashboard features include:
+- Total Income KPI
+- Total Expenses KPI
+- Remaining Balance KPI
+- Budget alerts
+- Recent transactions
+- Financial summaries
+- Budget analytics
+- Expense analytics
+- Spending insights
+
+Dashboard improvements:
+- Removed unnecessary KPI cards
+- Cleaner financial hierarchy
+- Improved mobile responsiveness
+- Better visual summaries
+- Improved financial readability
+
+---
+
+## 6. Custom Categories
+
+Users are not limited to predefined categories.
+
+Features include:
+- Custom category creation
+- Category synchronization
+- Reusable categories
+- Budget-connected categories
+
 Example:
+
+```txt
+Custom category created in Budgets
+→ automatically appears in Transactions
+```
+
+This improves flexibility and personalization.
+
+---
+
+## 7. Reports and CSV Export
+
+The Reports module generates downloadable financial summaries.
+
+Reports include:
+- Monthly summaries
+- Category analytics
+- Budget summaries
+- Transaction summaries
+- Financial insights
+- Budget status monitoring
+
+CSV export supports:
+- Dynamic report generation
+- Downloadable files
+- User-based filenames
+- Monthly report formatting
+
+Example filename:
 
 ```txt
 juan-dela-cruz-report-2026-05.csv
@@ -206,220 +294,404 @@ juan-dela-cruz-report-2026-05.csv
 
 ---
 
-### Settings and Profile
+## 8. Responsive Modern UI/UX
 
-Users can manage their profile information.
+The system was redesigned to provide a modern financial application experience.
 
-Supported actions:
+Improvements include:
+- Responsive layouts
+- Mobile-friendly modals
+- Improved dashboard cards
+- Better action buttons
+- Improved table responsiveness
+- Better modal scrolling
+- Smoother transitions
+- Improved financial hierarchy
+- Responsive charts
 
-- View email address
-- Update full name
-- Upload avatar
-- Preview avatar
-- Remove avatar
-
-Avatar images are stored in Supabase Storage. The database stores only the public avatar URL.
-
----
-
-## Tech Stack
-
-| Area | Technology |
-| --- | --- |
-| Framework | Next.js App Router |
-| Language | TypeScript |
-| Styling | Tailwind CSS |
-| Database | Supabase PostgreSQL |
-| Authentication | Supabase Auth |
-| Storage | Supabase Storage |
-| Charts | Recharts |
-| Icons | Lucide React |
-| Toast Notifications | Sonner |
-| Animations | Tailwind transitions / tailwindcss-animate |
+The design uses a dark emerald finance theme focused on:
+- Readability
+- Accessibility
+- Professionalism
+- Modern UI design
 
 ---
 
-## System Workflow
+## 9. Toast Notifications
 
-```txt
-Register / Login
-      ↓
-Create or update profile
-      ↓
-Add income and expenses
-      ↓
-Set monthly budgets
-      ↓
-Track budget usage
-      ↓
-View dashboard summaries
-      ↓
-Download monthly reports
-```
+The system provides user feedback through toast notifications.
 
-Module relationship:
+Examples include:
+- Successful transaction creation
+- Budget updates
+- CSV downloads
+- Delete confirmations
+- Validation warnings
+- Financial alerts
 
-```txt
-Transactions = actual income and expense records
-Budgets = planned monthly spending limits
-Dashboard = current month overview
-Reports = monthly financial summary
-Settings = profile and avatar management
-```
-
-Important design decision:
-
-```txt
-Budgets do not require existing transactions.
-```
-
-Correct workflow:
-
-```txt
-1. User creates a Food budget for May.
-2. User later adds Food expenses.
-3. Budget progress updates automatically.
-```
+This improves usability and interaction feedback.
 
 ---
 
-## Main Pages
+## 10. Financial Analytics
 
-```txt
-Dashboard
-Transactions
-Budgets
-Reports
-Settings
-Login
-Register
-```
+The system provides financial analytics and insights.
 
-### Dashboard
+Analytics include:
+- Total income
+- Total expenses
+- Remaining balance
+- Highest expense category
+- Highest income category
+- Category summaries
+- Budget percentages
+- Spending trends
 
-Shows the current month financial overview.
-
-### Transactions
-
-Manages income and expense records.
-
-### Budgets
-
-Manages monthly category spending limits.
-
-### Reports
-
-Shows monthly summaries and supports CSV export.
-
-### Settings
-
-Manages profile name, email display, and avatar.
+These analytics appear in:
+- Dashboard
+- Reports
+- Budget summaries
+- Expense History
 
 ---
 
-## Database Overview
+# Main Modules
 
-Required tables:
+| Rank | Module | Main Purpose |
+|---|---|---|
+| 1 | Budget ↔ Transaction Connection | Real-time budget monitoring |
+| 2 | Expense History System | View connected expenses |
+| 3 | Dashboard Analytics | Financial overview |
+| 4 | Budget Monitoring | Spending management |
+| 5 | Smart Alerts | Overspending prevention |
+| 6 | Reports & CSV Export | Monthly financial summaries |
+| 7 | Custom Categories | Flexible budgeting |
+| 8 | Responsive UI/UX | Better user experience |
+| 9 | Authentication | Secure user access |
+| 10 | Profile Management | User customization |
+
+---
+
+# System Architecture
+
+## Frontend Layer
+
+The frontend was developed using:
+- Next.js App Router
+- TypeScript
+- Tailwind CSS
+- Recharts
+- Lucide React
+
+Responsibilities:
+- Rendering UI
+- Financial dashboards
+- Charts and analytics
+- Responsive layouts
+- Modal handling
+- Toast notifications
+- Transaction management
+
+---
+
+## Backend Layer
+
+The backend services are managed using Supabase.
+
+Responsibilities:
+- Authentication
+- Database interaction
+- Session management
+- Row Level Security
+- File storage
+- API handling
+
+---
+
+## Database Layer
+
+The system uses PostgreSQL through Supabase.
+
+Main tables:
+- profiles
+- transactions
+- budgets
+
+Relationships:
 
 ```txt
-profiles
+users
+  ↓
 transactions
+  ↓
 budgets
 ```
 
-### profiles
+Transactions affect Budgets using:
+- Category
+- Month
+- Year matching
 
-Stores user profile information.
+---
 
-Main fields:
+# Database Structure
 
-```txt
-id
-full_name
-avatar_url
-created_at
-updated_at
-```
+## profiles
 
-### transactions
+Stores profile information.
+
+Fields:
+- id
+- full_name
+- avatar_url
+- created_at
+- updated_at
+
+---
+
+## transactions
 
 Stores income and expense records.
 
-Main fields:
+Fields:
+- id
+- user_id
+- type
+- amount
+- category
+- note
+- transaction_date
+- created_at
 
-```txt
-id
-user_id
-type
-amount
-category
-note
-transaction_date
-created_at
-```
+Allowed types:
+- income
+- expense
 
-Allowed transaction types:
+---
 
-```txt
-income
-expense
-```
-
-### budgets
+## budgets
 
 Stores monthly category budgets.
 
-Main fields:
-
-```txt
-id
-user_id
-category
-amount
-month
-year
-created_at
-```
+Fields:
+- id
+- user_id
+- category
+- amount
+- month
+- year
+- created_at
 
 Important rule:
 
 ```txt
-A user should only have one budget per category, month, and year.
+One budget per category, month, and year.
 ```
 
 ---
 
-## Supabase Requirements
+# Supabase Security Features
 
-Before running the app, configure Supabase with:
+The system uses Supabase security mechanisms including:
 
-- Authentication enabled
-- `profiles` table
-- `transactions` table
-- `budgets` table
-- Row Level Security policies
-- Public `avatars` storage bucket
-- Storage policies for avatar read, upload, update, and delete
+## Row Level Security (RLS)
 
-Required storage bucket:
+RLS ensures users can only access their own data.
+
+Protected tables:
+- profiles
+- transactions
+- budgets
+
+---
+
+## Authentication
+
+Authentication uses Supabase Auth.
+
+Supported features:
+- Login
+- Registration
+- Protected routes
+- Session management
+
+---
+
+## Storage Policies
+
+Avatar uploads are protected using Supabase Storage policies.
+
+Supported file types:
+- image/jpeg
+- image/png
+- image/webp
+
+Storage bucket:
 
 ```txt
 avatars
 ```
 
-Allowed avatar file types:
+---
 
-```txt
-image/jpeg
-image/png
-image/webp
-```
+# Transactions Module
+
+Users can:
+- Add income
+- Add expenses
+- Edit transactions
+- Delete transactions
+- Filter transactions
+- Search records
+- Add notes
+- Create custom categories
+- Connect expenses to budgets
+
+Income sources:
+- Monthly Salary
+- Allowance
+- Other Income
+
+Expense categories include:
+- Food
+- Transportation
+- School
+- Bills
+- Shopping
+- Health
+- Groceries
+- Utilities
+- Travel
+- Entertainment
+- Personal Care
+- Custom categories
 
 ---
 
-## Environment Variables
+# Budget Module
 
-Create a `.env.local` file in the project root:
+Features include:
+- Monthly budgets
+- Budget progress tracking
+- Remaining budget calculation
+- Safe/Warning/Exceeded status
+- Expense history viewing
+- Connected transaction tracking
+- Real-time monitoring
+
+---
+
+# Expense History Module
+
+The Expense History modal allows users to:
+- Review budget-connected expenses
+- See transaction dates
+- See expense amounts
+- Monitor overspending
+- Analyze category spending behavior
+
+Expense History improves:
+- Transparency
+- Monitoring
+- Financial awareness
+- Spending analysis
+
+This feature is one of the strongest parts of the system.
+
+---
+
+# Reports Module
+
+Features:
+- Monthly reports
+- Category summaries
+- Financial insights
+- Budget summaries
+- CSV export
+- Downloadable reports
+- Report filtering
+
+Supports:
+- Browser download
+- Median.co download integration
+
+---
+
+# Dashboard Module
+
+Dashboard features:
+- Financial summaries
+- Budget alerts
+- Analytics
+- Recent transactions
+- Charts
+- Expense monitoring
+- Financial insights
+
+The dashboard focuses on:
+- Simplicity
+- Readability
+- Financial awareness
+
+---
+
+# Median.co Integration
+
+The system supports deployment through:
+- Vercel
+- Median.co
+
+Median.co support allows:
+- Native-like mobile experience
+- Webview compatibility
+- Report downloads inside the app
+- Improved mobile accessibility
+
+CSV downloads support:
+- Browser fallback download
+- Median native file download
+
+---
+
+# Responsive Design
+
+The application is fully responsive.
+
+Supported devices:
+- Mobile phones
+- Tablets
+- Desktop devices
+
+Responsive improvements include:
+- Responsive tables
+- Mobile-friendly modals
+- Better scrolling
+- Responsive charts
+- Responsive dashboards
+
+---
+
+# Tech Stack
+
+| Area | Technology |
+|---|---|
+| Frontend | Next.js |
+| Language | TypeScript |
+| Styling | Tailwind CSS |
+| Backend | Supabase |
+| Database | PostgreSQL |
+| Authentication | Supabase Auth |
+| Charts | Recharts |
+| Icons | Lucide React |
+| Notifications | Sonner |
+| Hosting | Vercel |
+| Mobile Wrapper | Median.co |
+
+---
+
+# Environment Variables
+
+Create a `.env.local` file:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
@@ -428,9 +700,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 
 ---
 
-## Installation
+# Installation
 
-Clone the repository:
+Clone repository:
 
 ```bash
 git clone your-repository-url
@@ -443,31 +715,13 @@ Install dependencies:
 npm install
 ```
 
-Install required packages if missing:
-
-```bash
-npm install recharts lucide-react sonner
-```
-
-Optional animation package:
-
-```bash
-npm install tailwindcss-animate
-```
-
-Run the development server:
+Run development server:
 
 ```bash
 npm run dev
 ```
 
-Open the app:
-
-```txt
-http://localhost:3000
-```
-
-Build for production:
+Build production version:
 
 ```bash
 npm run build
@@ -475,261 +729,84 @@ npm run build
 
 ---
 
-## UI Theme
-
-MyBudget uses a dark emerald finance theme.
-
-Main colors:
+# System Workflow
 
 ```txt
-Background: #020617
-Primary: #10b981
-Accent: #34d399
-Card: white with low opacity
-Border: white/10
-Text: white and slate
-Warning: amber
-Danger: red
-Success: emerald
-```
-
-The design goal is to make the app feel clean, modern, and easy to use.
-
----
-
-## Animations
-
-The interface uses lightweight animations to make the app feel smooth without distracting the user.
-
-Animation areas:
-
-- Buttons
-- Cards
-- Sidebar drawer
-- Modals
-- Progress bars
-- Loading spinners
-- Toast notifications
-- Chart rendering
-
-Recommended Tailwind classes:
-
-```txt
-transition
-transition-all
-duration-200
-duration-300
-ease-out
-hover:scale-[1.01]
-active:scale-[0.98]
-animate-spin
-```
-
-Card animation example:
-
-```tsx
-<div className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-xl transition-all duration-300 hover:-translate-y-1 hover:bg-white/[0.06]">
-  Card content
-</div>
-```
-
-Button animation example:
-
-```tsx
-<button className="rounded-2xl bg-emerald-500 px-4 py-3 font-semibold text-white transition-all duration-200 hover:bg-emerald-600 active:scale-[0.98]">
-  Save
-</button>
-```
-
-Progress bar animation example:
-
-```tsx
-<div className="h-3 rounded-full bg-slate-800">
-  <div
-    className="h-3 rounded-full bg-emerald-500 transition-all duration-500 ease-out"
-    style={{ width: "75%" }}
-  />
-</div>
-```
-
-Loading spinner example:
-
-```tsx
-<Loader2 className="h-4 w-4 animate-spin" />
-```
-
-Modal animation:
-
-```txt
-animate-in fade-in zoom-in-95 duration-200
-```
-
-Sidebar animation:
-
-```txt
-transition-transform duration-300 ease-out
-```
-
-If using `tailwindcss-animate`, add it to `tailwind.config.ts`:
-
-```ts
-plugins: [require("tailwindcss-animate")]
+Register/Login
+      ↓
+Create or update profile
+      ↓
+Add income and expenses
+      ↓
+Create monthly budgets
+      ↓
+Track budget progress
+      ↓
+Review expense history
+      ↓
+View dashboard analytics
+      ↓
+Generate reports
+      ↓
+Download CSV reports
 ```
 
 ---
 
-## Folder Structure
+# Key Innovations
 
-```txt
-app/
-  dashboard/
-  transactions/
-  budgets/
-  reports/
-  settings/
-  login/
-  register/
+The strongest innovations of the system are:
 
-components/
-  app-shell.tsx
-  dashboard/
-  transactions/
-  budgets/
-  reports/
-  settings/
-
-lib/
-  supabase/
-    client.ts
-    server.ts
-```
+1. Connected Budget ↔ Transaction workflow
+2. Real-time budget monitoring
+3. Expense History viewing
+4. Smart financial alerts
+5. Category synchronization
+6. Financial analytics
+7. Responsive dashboard
+8. Integrated CSV reporting
+9. Modern UI/UX
+10. Median.co support
 
 ---
 
-## Testing Checklist
-
-Before final submission, test the following.
-
-### Authentication
-
-- Register using a valid Gmail address
-- Reject invalid email format
-- Reject weak password
-- Login successfully
-- Logout successfully
-
-### Transactions
-
-- Add income transaction
-- Add expense transaction
-- Edit transaction
-- Delete transaction
-- Confirm income does not affect budgets
-- Confirm expenses update budget usage
-
-### Budgets
-
-- Create budget before adding transactions
-- Edit budget amount
-- Delete budget
-- Confirm duplicate category budget is blocked
-- Confirm warning status at 80%
-- Confirm exceeded status at 100%
-
-### Dashboard
-
-- Confirm current month totals
-- Confirm cards show correct values
-- Confirm charts render correctly
-- Confirm recent transactions display
-- Confirm budget alert banner works
-
-### Reports
-
-- Change month and year filters
-- Confirm report totals update
-- Download CSV report
-- Confirm CSV filename uses user name
-- Confirm report includes summary, category summary, and transaction records
-
-### Settings
-
-- Update full name
-- Upload avatar
-- Preview avatar
-- Remove avatar
-- Confirm profile data updates correctly
-
-### Responsive Design
-
-- Test mobile screen
-- Test tablet screen
-- Test desktop screen
-- Test sidebar drawer
-- Test modals on small screens
-
-### Production Build
-
-```bash
-npm run build
-```
-
----
-
-## Project Scope
-
-Included in this project:
-
-```txt
-User authentication
-Profile management
-Income tracking
-Expense tracking
-Monthly budgets
-Budget alerts
-Dashboard charts
-Monthly reports
-CSV export
-Avatar upload
-Responsive UI
-Basic animations
-```
-
-Not included in this project:
-
-```txt
-Bank integration
-AI financial prediction
-Investment tracking
-Multi-user budgeting
-Complex forecasting
-Payment processing
-```
-
-These features are outside the current project scope.
-
----
-
-## Future Improvements
+# Future Improvements
 
 Possible future improvements:
-
-1. Add custom category management.
-2. Add weekly financial summary.
-3. Add PDF report export.
-4. Add dashboard loading skeletons.
-5. Add simple unit tests for budget calculations.
-6. Add avatar display in the sidebar.
-7. Add offline support for mobile builds.
-
-Future improvements should keep the system simple and focused on personal budgeting.
+- PDF report export
+- Recurring transactions
+- Savings goals
+- Advanced analytics
+- Offline support
+- Push notifications
+- Multi-device synchronization
+- AI financial insights
 
 ---
 
-## Final Summary
+# Final Summary
 
-MyBudget is a focused personal finance system designed to help users manage income, expenses, and monthly budgets.
+MyBudget: Personal Expense Tracking and Budget Alert System is a connected personal finance web application designed to help users monitor spending behavior, manage monthly budgets, and improve financial awareness.
 
-It provides secure authentication, transaction management, budget tracking, visual alerts, dashboard charts, downloadable reports, profile management, responsive design, and smooth animations.
+The system combines:
+- Transaction management
+- Budget monitoring
+- Dashboard analytics
+- Smart alerts
+- Expense history tracking
+- Custom category synchronization
+- CSV reporting
+- Responsive UI/UX
+- Secure authentication
 
-The system is practical, easy to understand, and ready for final testing, deployment, and project presentation.
+into one connected financial workflow.
+
+The project demonstrates:
+- Practical financial monitoring
+- Connected budgeting logic
+- Modern full-stack web development
+- Responsive UI/UX design
+- Financial analytics
+- Secure cloud-based architecture
+
+MyBudget is designed to be practical, responsive, modern, and suitable for real-world personal budgeting needs.
