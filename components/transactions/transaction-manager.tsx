@@ -6,16 +6,21 @@ import type {
 } from "@/app/transactions/page";
 import { supabase } from "@/lib/supabase/client";
 import {
+  AlertTriangle,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
   Edit,
   Eye,
+  Lock,
   Plus,
   Search,
   Trash2,
   WalletCards,
   X,
+  CheckCircle,    
+  Check,          
+  Loader2,       
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -62,6 +67,21 @@ type DailySummary = {
   count: number;
   hasIncome: boolean;
   hasExpense: boolean;
+};
+
+type TransactionLimitState = {
+  totalIncome: number;
+  totalExpenses: number;
+  adjustedIncome: number;
+  adjustedExpenses: number;
+  projectedIncome: number;
+  projectedExpenses: number;
+  availableBeforeTransaction: number;
+  projectedBalance: number;
+  isAmountEntered: boolean;
+  isLimitExceeded: boolean;
+  title: string;
+  description: string;
 };
 
 const emptyForm: FormState = {
@@ -240,6 +260,115 @@ export default function TransactionManager({
       (a, b) => a.localeCompare(b)
     );
   }, [expenseCategories]);
+
+  const totalIncome = useMemo(() => {
+    return transactions
+      .filter((transaction) => transaction.type === "income")
+      .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+  }, [transactions]);
+
+  const totalExpenses = useMemo(() => {
+    return transactions
+      .filter((transaction) => transaction.type === "expense")
+      .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+  }, [transactions]);
+
+  const transactionLimitState = useMemo<TransactionLimitState>(() => {
+    const amount = Number(form.amount);
+    const safeAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
+
+    const oldIncomeAmount =
+      editingTransaction?.type === "income"
+        ? Number(editingTransaction.amount)
+        : 0;
+
+    const oldExpenseAmount =
+      editingTransaction?.type === "expense"
+        ? Number(editingTransaction.amount)
+        : 0;
+
+    const adjustedIncome = totalIncome - oldIncomeAmount;
+    const adjustedExpenses = totalExpenses - oldExpenseAmount;
+
+    const projectedIncome =
+      adjustedIncome + (form.type === "income" ? safeAmount : 0);
+
+    const projectedExpenses =
+      adjustedExpenses + (form.type === "expense" ? safeAmount : 0);
+
+    const availableBeforeTransaction = adjustedIncome - adjustedExpenses;
+    const projectedBalance = projectedIncome - projectedExpenses;
+    const isAmountEntered = form.amount.trim().length > 0 && safeAmount > 0;
+    const isLimitExceeded = isAmountEntered && projectedExpenses > projectedIncome;
+
+    let title = "Transaction allowed";
+    let description =
+      "This transaction keeps your total expenses within your total income.";
+
+    if (form.type === "expense") {
+      title = isLimitExceeded
+        ? "Expense limit exceeded"
+        : "Expense is within your income limit";
+
+      description = isLimitExceeded
+        ? `You can only spend ${formatMoney(
+            Math.max(availableBeforeTransaction, 0)
+          )}. This expense would make your total expenses exceed your total income.`
+        : `Available spending balance before this transaction: ${formatMoney(
+            Math.max(availableBeforeTransaction, 0)
+          )}.`;
+    }
+
+    if (form.type === "income" && editingTransaction?.type === "income") {
+      title = isLimitExceeded
+        ? "Income change not allowed"
+        : "Income change is allowed";
+
+      description = isLimitExceeded
+        ? `Reducing this income would make your total expenses exceed your total income. Projected balance: ${formatMoney(
+            projectedBalance
+          )}.`
+        : `Projected balance after this update: ${formatMoney(
+            projectedBalance
+          )}.`;
+    }
+
+    if (form.type === "income" && editingTransaction?.type === "expense") {
+      title = "Converting expense to income";
+      description = `Projected balance after this update: ${formatMoney(
+        projectedBalance
+      )}.`;
+    }
+
+    if (form.type === "expense" && editingTransaction?.type === "income") {
+      title = isLimitExceeded
+        ? "Conversion not allowed"
+        : "Conversion is allowed";
+
+      description = isLimitExceeded
+        ? `Changing this income into an expense would make your total expenses exceed your total income. Projected balance: ${formatMoney(
+            projectedBalance
+          )}.`
+        : `Projected balance after this update: ${formatMoney(
+            projectedBalance
+          )}.`;
+    }
+
+    return {
+      totalIncome,
+      totalExpenses,
+      adjustedIncome,
+      adjustedExpenses,
+      projectedIncome,
+      projectedExpenses,
+      availableBeforeTransaction,
+      projectedBalance,
+      isAmountEntered,
+      isLimitExceeded,
+      title,
+      description,
+    };
+  }, [form.amount, form.type, totalIncome, totalExpenses, editingTransaction]);
 
   const matchingBudget = useMemo(() => {
     if (form.type !== "expense" || !form.transaction_date) return null;
@@ -488,17 +617,27 @@ export default function TransactionManager({
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  e.preventDefault();
 
-    const amount = Number(form.amount);
-    const category = form.category.trim();
+  // Global expense lock check
+  const isExpenseLockedGlobally = totalIncome <= totalExpenses;
+  if (form.type === "expense" && isExpenseLockedGlobally) {
+    toast.error("Expenses Locked", {
+      description: `Total income (₱${formatMoney(totalIncome)}) ≤ total expenses (₱${formatMoney(totalExpenses)}). Add income first.`,
+      duration: 6000,
+    });
+    return;
+  }
 
-    if (!amount || amount <= 0) {
-      toast.error("Invalid amount", {
-        description: "Amount must be greater than zero.",
-      });
-      return;
-    }
+  const amount = Number(form.amount);
+  const category = form.category.trim();
+
+  if (!amount || amount <= 0) {
+    toast.error("Invalid amount", {
+      description: "Amount must be greater than zero.",
+    });
+    return;
+  }
 
     if (!category || category === "Other") {
       toast.error("Missing category", {
@@ -523,6 +662,18 @@ export default function TransactionManager({
     if (!form.transaction_date) {
       toast.error("Missing date", {
         description: "Please select a transaction date.",
+      });
+      return;
+    }
+
+    if (transactionLimitState.isLimitExceeded) {
+      toast.error(transactionLimitState.title, {
+        description: `${transactionLimitState.description} Current income: ${formatMoney(
+          transactionLimitState.projectedIncome
+        )}. Projected expenses: ${formatMoney(
+          transactionLimitState.projectedExpenses
+        )}.`,
+        duration: 6000,
       });
       return;
     }
@@ -563,12 +714,9 @@ export default function TransactionManager({
       );
 
       toast.success("Transaction updated", {
-        description:
-          form.type === "expense"
-            ? matchingBudget
-              ? `${category} expense is connected to its budget.`
-              : `${category} expense was updated. No matching budget yet.`
-            : `${category} income was updated successfully.`,
+        description: `Projected balance is now ${formatMoney(
+          transactionLimitState.projectedBalance
+        )}.`,
       });
     } else {
       const { data, error } = await supabase
@@ -595,10 +743,12 @@ export default function TransactionManager({
       toast.success("Transaction added", {
         description:
           form.type === "expense"
-            ? matchingBudget
-              ? `${category} expense was added and connected to your budget.`
-              : `${category} expense was added. Add a matching budget to track it.`
-            : `${category} income was added to your records.`,
+            ? `Expense saved. Remaining balance is ${formatMoney(
+                transactionLimitState.projectedBalance
+              )}.`
+            : `Income saved. Projected balance is ${formatMoney(
+                transactionLimitState.projectedBalance
+              )}.`,
       });
     }
 
@@ -635,7 +785,7 @@ export default function TransactionManager({
     toast.success("Transaction deleted", {
       description:
         deleteTarget.type === "expense"
-          ? `${deleteTarget.category} expense was removed. Budget usage will update.`
+          ? `${deleteTarget.category} expense was removed. Your available balance will increase.`
           : `${deleteTarget.category} income was removed from your records.`,
     });
 
@@ -657,8 +807,8 @@ export default function TransactionManager({
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Record income and expenses. Use the calendar to review what happened
-            financially on a specific day.
+            Record income and expenses. Expenses are locked when they would make
+            your total expenses exceed your total income.
           </p>
         </div>
 
@@ -898,6 +1048,7 @@ export default function TransactionManager({
           loading={loading}
           matchingBudget={matchingBudget}
           expenseCategories={expenseCategories}
+          transactionLimitState={transactionLimitState}
           onClose={closeModal}
           onSubmit={handleSubmit}
           onTypeChange={handleTypeChange}
@@ -1343,6 +1494,7 @@ function TransactionModal({
   loading,
   matchingBudget,
   expenseCategories,
+  transactionLimitState,
   onClose,
   onSubmit,
   onTypeChange,
@@ -1354,6 +1506,7 @@ function TransactionModal({
   loading: boolean;
   matchingBudget: TransactionBudget | null;
   expenseCategories: string[];
+  transactionLimitState: TransactionLimitState;
   onClose: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
   onTypeChange: (type: "income" | "expense") => void;
@@ -1361,6 +1514,8 @@ function TransactionModal({
 }) {
   const activeCategories =
     form.type === "income" ? incomeSources : expenseCategories;
+
+  const saveDisabled = loading || transactionLimitState.isLimitExceeded;
 
   return (
     <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
@@ -1371,7 +1526,7 @@ function TransactionModal({
             <p className="mt-1 text-sm text-slate-400">
               {form.type === "income"
                 ? "Record salary, allowance, or other income."
-                : "Record expenses that can update your Budget progress."}
+                : "Record expenses only when they fit within your income."}
             </p>
           </div>
 
@@ -1486,21 +1641,85 @@ function TransactionModal({
 
           <div
             className={`rounded-2xl border p-4 text-sm ${
-              form.type === "income"
-                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
-                : matchingBudget
-                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
-                  : "border-yellow-500/20 bg-yellow-500/10 text-yellow-200"
+              transactionLimitState.isLimitExceeded
+                ? "border-red-500/20 bg-red-500/10 text-red-200"
+                : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
             }`}
           >
-            {form.type === "income"
-              ? "Income increases total income and net balance. It does not affect Budgets."
-              : matchingBudget
+            <div className="flex gap-3">
+              <div
+                className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
+                  transactionLimitState.isLimitExceeded
+                    ? "bg-red-500/20 text-red-200"
+                    : "bg-emerald-500/20 text-emerald-200"
+                }`}
+              >
+                {transactionLimitState.isLimitExceeded ? (
+                  <Lock className="h-4 w-4" />
+                ) : (
+                  <WalletCards className="h-4 w-4" />
+                )}
+              </div>
+
+              <div>
+                <p className="font-semibold">
+                  {transactionLimitState.title}
+                </p>
+                <p className="mt-1 text-sm opacity-90">
+                  {transactionLimitState.description}
+                </p>
+
+                <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                  <div className="rounded-xl bg-black/10 p-2">
+                    <p className="opacity-70">Income</p>
+                    <p className="font-semibold">
+                      {formatMoney(transactionLimitState.projectedIncome)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-black/10 p-2">
+                    <p className="opacity-70">Expenses</p>
+                    <p className="font-semibold">
+                      {formatMoney(transactionLimitState.projectedExpenses)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-black/10 p-2">
+                    <p className="opacity-70">Balance</p>
+                    <p className="font-semibold">
+                      {formatMoney(transactionLimitState.projectedBalance)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {form.type === "expense" && (
+            <div
+              className={`rounded-2xl border p-4 text-sm ${
+                matchingBudget
+                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                  : "border-yellow-500/20 bg-yellow-500/10 text-yellow-200"
+              }`}
+            >
+              {matchingBudget
                 ? `This expense matches your ${normalizeCategory(
                     matchingBudget.category
                   )} budget worth ${formatMoney(matchingBudget.amount)}.`
-                : "No matching budget found for this category and date. You can still save this expense."}
-          </div>
+                : "No matching budget found for this category and date. You can still save this expense if it fits your income limit."}
+            </div>
+          )}
+
+          {transactionLimitState.isLimitExceeded && (
+            <div className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+              <p>
+                Save is locked because this transaction would make your total
+                expenses higher than your total income.
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
             <button
@@ -1514,10 +1733,23 @@ function TransactionModal({
 
             <button
               type="submit"
-              disabled={loading}
-              className="rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={saveDisabled}
+              className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                transactionLimitState.isLimitExceeded
+                  ? "bg-red-500 hover:bg-red-600"
+                  : "bg-emerald-500 hover:bg-emerald-600"
+              }`}
             >
-              {loading ? "Saving..." : "Save Transaction"}
+              {loading ? (
+                "Saving..."
+              ) : transactionLimitState.isLimitExceeded ? (
+                <>
+                  <Lock className="h-4 w-4" />
+                  Save Locked
+                </>
+              ) : (
+                "Save Transaction"
+              )}
             </button>
           </div>
         </form>
