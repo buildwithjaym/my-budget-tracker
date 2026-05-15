@@ -1486,7 +1486,6 @@ function DailyTransactionGroup({
     </div>
   );
 }
-
 function TransactionModal({
   title,
   form,
@@ -1515,18 +1514,24 @@ function TransactionModal({
   const activeCategories =
     form.type === "income" ? incomeSources : expenseCategories;
 
-  const saveDisabled = loading || transactionLimitState.isLimitExceeded;
+  const saveDisabled =
+    loading || transactionLimitState.isLimitExceeded;
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
-      <div className="mx-auto my-4 w-full max-w-lg rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-white">{title}</h2>
-            <p className="mt-1 text-sm text-slate-400">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6">
+      <div className="relative flex w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-950 shadow-2xl shadow-black max-h-[95vh]">
+
+        {/* HEADER */}
+        <div className="flex shrink-0 items-start justify-between border-b border-white/10 px-5 py-4 sm:px-6">
+          <div className="pr-4">
+            <h2 className="text-xl sm:text-2xl font-bold text-white">
+              {title}
+            </h2>
+
+            <p className="mt-1 text-xs sm:text-sm text-slate-400">
               {form.type === "income"
                 ? "Record salary, allowance, or other income."
-                : "Record expenses only when they fit within your income."}
+                : "Record expenses only when they fit within your available balance."}
             </p>
           </div>
 
@@ -1540,219 +1545,321 @@ function TransactionModal({
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 rounded-2xl bg-white/5 p-1">
-            <button
-              type="button"
-              onClick={() => onTypeChange("income")}
-              disabled={loading}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60 ${
-                form.type === "income"
-                  ? "bg-emerald-500 text-white"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Income
-            </button>
+        {/* SCROLLABLE CONTENT */}
+        <div className="overflow-y-auto px-5 py-5 sm:px-6">
+          <form onSubmit={onSubmit} className="space-y-5">
 
-            <button
-              type="button"
-              onClick={() => onTypeChange("expense")}
-              disabled={loading}
-              className={`rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60 ${
-                form.type === "expense"
-                  ? "bg-red-500 text-white"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              Expense
-            </button>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-slate-300">Amount</label>
-            <input
-              type="number"
-              min="1"
-              step="0.01"
-              value={form.amount}
-              onChange={(e) =>
-                setForm((current) => ({ ...current, amount: e.target.value }))
-              }
-              placeholder="0.00"
-              required
-              disabled={loading}
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-slate-300">
-              {form.type === "income" ? "Income Source" : "Expense Category"}
-            </label>
-
-            <select
-              value={form.category}
-              onChange={(e) => onCategoryChange(e.target.value)}
-              required
-              disabled={loading}
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
-            >
-              {activeCategories.map((category) => (
-                <option key={category} value={category}>
-                  {category === "Other"
-                    ? "Other / Add custom category"
-                    : category}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-slate-300">Date</label>
-            <input
-              type="date"
-              value={form.transaction_date}
-              onChange={(e) =>
-                setForm((current) => ({
-                  ...current,
-                  transaction_date: e.target.value,
-                }))
-              }
-              required
-              disabled={loading}
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-slate-300">Note</label>
-            <textarea
-              value={form.note}
-              onChange={(e) =>
-                setForm((current) => ({ ...current, note: e.target.value }))
-              }
-              placeholder="Optional note"
-              rows={3}
-              disabled={loading}
-              className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
-            />
-          </div>
-
-          <div
-            className={`rounded-2xl border p-4 text-sm ${
-              transactionLimitState.isLimitExceeded
-                ? "border-red-500/20 bg-red-500/10 text-red-200"
-                : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
-            }`}
-          >
-            <div className="flex gap-3">
-              <div
-                className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
-                  transactionLimitState.isLimitExceeded
-                    ? "bg-red-500/20 text-red-200"
-                    : "bg-emerald-500/20 text-emerald-200"
+            {/* TYPE SWITCH */}
+            <div className="grid grid-cols-2 gap-3 rounded-2xl bg-white/5 p-1">
+              <button
+                type="button"
+                onClick={() => onTypeChange("income")}
+                disabled={loading}
+                className={`rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60 ${
+                  form.type === "income"
+                    ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
-                {transactionLimitState.isLimitExceeded ? (
-                  <Lock className="h-4 w-4" />
-                ) : (
-                  <WalletCards className="h-4 w-4" />
+                Income
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onTypeChange("expense")}
+                disabled={loading}
+                className={`rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60 ${
+                  form.type === "expense"
+                    ? "bg-red-500 text-white shadow-lg shadow-red-500/20"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Expense
+              </button>
+            </div>
+
+            {/* MAIN GRID */}
+            <div className="grid gap-5 xl:grid-cols-[1fr_420px]">
+
+              {/* LEFT SIDE */}
+              <div className="space-y-5">
+
+                {/* FORM GRID */}
+                <div className="grid gap-5 md:grid-cols-2">
+
+                  {/* AMOUNT */}
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium text-slate-300">
+                      Amount
+                    </label>
+
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={form.amount}
+                      onChange={(e) =>
+                        setForm((current) => ({
+                          ...current,
+                          amount: e.target.value,
+                        }))
+                      }
+                      placeholder="0.00"
+                      required
+                      disabled={loading}
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
+                    />
+                  </div>
+
+                  {/* CATEGORY */}
+                  <div>
+                    <label className="text-sm font-medium text-slate-300">
+                      {form.type === "income"
+                        ? "Income Source"
+                        : "Expense Category"}
+                    </label>
+
+                    <select
+                      value={form.category}
+                      onChange={(e) =>
+                        onCategoryChange(e.target.value)
+                      }
+                      required
+                      disabled={loading}
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
+                    >
+                      {activeCategories.map((category) => (
+                        <option
+                          key={category}
+                          value={category}
+                        >
+                          {category === "Other"
+                            ? "Other / Add custom category"
+                            : category}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* DATE */}
+                  <div>
+                    <label className="text-sm font-medium text-slate-300">
+                      Date
+                    </label>
+
+                    <input
+                      type="date"
+                      value={form.transaction_date}
+                      onChange={(e) =>
+                        setForm((current) => ({
+                          ...current,
+                          transaction_date: e.target.value,
+                        }))
+                      }
+                      required
+                      disabled={loading}
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white outline-none transition focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
+                    />
+                  </div>
+
+                  {/* NOTE */}
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium text-slate-300">
+                      Note
+                    </label>
+
+                    <textarea
+                      value={form.note}
+                      onChange={(e) =>
+                        setForm((current) => ({
+                          ...current,
+                          note: e.target.value,
+                        }))
+                      }
+                      placeholder="Optional note..."
+                      rows={5}
+                      disabled={loading}
+                      className="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60"
+                    />
+                  </div>
+                </div>
+
+                {/* WARNING */}
+                {transactionLimitState.isLimitExceeded && (
+                  <div className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+
+                    <p>
+                      Save is locked because this transaction would
+                      make your total expenses higher than your total
+                      income.
+                    </p>
+                  </div>
                 )}
               </div>
 
-              <div>
-                <p className="font-semibold">
-                  {transactionLimitState.title}
-                </p>
-                <p className="mt-1 text-sm opacity-90">
-                  {transactionLimitState.description}
-                </p>
+              {/* RIGHT SIDE */}
+              <div className="space-y-5">
 
-                <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
-                  <div className="rounded-xl bg-black/10 p-2">
-                    <p className="opacity-70">Income</p>
-                    <p className="font-semibold">
-                      {formatMoney(transactionLimitState.projectedIncome)}
-                    </p>
-                  </div>
+                {/* LIMIT CARD */}
+                <div
+                  className={`rounded-3xl border p-5 text-sm ${
+                    transactionLimitState.isLimitExceeded
+                      ? "border-red-500/20 bg-red-500/10 text-red-200"
+                      : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                  }`}
+                >
+                  <div className="flex gap-4">
 
-                  <div className="rounded-xl bg-black/10 p-2">
-                    <p className="opacity-70">Expenses</p>
-                    <p className="font-semibold">
-                      {formatMoney(transactionLimitState.projectedExpenses)}
-                    </p>
-                  </div>
+                    <div
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                        transactionLimitState.isLimitExceeded
+                          ? "bg-red-500/20"
+                          : "bg-emerald-500/20"
+                      }`}
+                    >
+                      {transactionLimitState.isLimitExceeded ? (
+                        <Lock className="h-5 w-5" />
+                      ) : (
+                        <WalletCards className="h-5 w-5" />
+                      )}
+                    </div>
 
-                  <div className="rounded-xl bg-black/10 p-2">
-                    <p className="opacity-70">Balance</p>
-                    <p className="font-semibold">
-                      {formatMoney(transactionLimitState.projectedBalance)}
-                    </p>
+                    <div className="flex-1">
+                      <p className="text-base font-semibold">
+                        {transactionLimitState.title}
+                      </p>
+
+                      <p className="mt-1 text-sm opacity-90">
+                        {transactionLimitState.description}
+                      </p>
+
+                      <div className="mt-4 grid grid-cols-3 gap-3">
+
+                        <div className="rounded-2xl bg-black/10 p-3">
+                          <p className="text-xs opacity-70">
+                            Income
+                          </p>
+
+                          <p className="mt-1 font-semibold">
+                            {formatMoney(
+                              transactionLimitState.projectedIncome
+                            )}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-black/10 p-3">
+                          <p className="text-xs opacity-70">
+                            Expenses
+                          </p>
+
+                          <p className="mt-1 font-semibold">
+                            {formatMoney(
+                              transactionLimitState.projectedExpenses
+                            )}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-black/10 p-3">
+                          <p className="text-xs opacity-70">
+                            Balance
+                          </p>
+
+                          <p className="mt-1 font-semibold">
+                            {formatMoney(
+                              transactionLimitState.projectedBalance
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
+
+                {/* BUDGET CARD */}
+                {form.type === "expense" && (
+                  <div
+                    className={`rounded-3xl border p-5 text-sm ${
+                      matchingBudget
+                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                        : "border-yellow-500/20 bg-yellow-500/10 text-yellow-200"
+                    }`}
+                  >
+                    {matchingBudget ? (
+                      <div>
+                        <p className="font-semibold">
+                          Budget Match Found
+                        </p>
+
+                        <p className="mt-2 leading-relaxed">
+                          This expense matches your{" "}
+                          <span className="font-semibold">
+                            {normalizeCategory(
+                              matchingBudget.category
+                            )}
+                          </span>{" "}
+                          budget worth{" "}
+                          <span className="font-semibold">
+                            {formatMoney(
+                              matchingBudget.amount
+                            )}
+                          </span>
+                          .
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="font-semibold">
+                          No Matching Budget
+                        </p>
+
+                        <p className="mt-2 leading-relaxed">
+                          No budget was found for this category and
+                          date. You can still save this transaction if
+                          it stays within your available balance.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
 
-          {form.type === "expense" && (
-            <div
-              className={`rounded-2xl border p-4 text-sm ${
-                matchingBudget
-                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
-                  : "border-yellow-500/20 bg-yellow-500/10 text-yellow-200"
-              }`}
-            >
-              {matchingBudget
-                ? `This expense matches your ${normalizeCategory(
-                    matchingBudget.category
-                  )} budget worth ${formatMoney(matchingBudget.amount)}.`
-                : "No matching budget found for this category and date. You can still save this expense if it fits your income limit."}
+            {/* FOOTER */}
+            <div className="flex flex-col-reverse gap-3 border-t border-white/10 pt-5 sm:flex-row sm:justify-end">
+
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={loading}
+                className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={saveDisabled}
+                className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  transactionLimitState.isLimitExceeded
+                    ? "bg-red-500 hover:bg-red-600"
+                    : "bg-emerald-500 hover:bg-emerald-600"
+                }`}
+              >
+                {loading ? (
+                  "Saving..."
+                ) : transactionLimitState.isLimitExceeded ? (
+                  <>
+                    <Lock className="h-4 w-4" />
+                    Save Locked
+                  </>
+                ) : (
+                  "Save Transaction"
+                )}
+              </button>
             </div>
-          )}
-
-          {transactionLimitState.isLimitExceeded && (
-            <div className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-              <p>
-                Save is locked because this transaction would make your total
-                expenses higher than your total income.
-              </p>
-            </div>
-          )}
-
-          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="submit"
-              disabled={saveDisabled}
-              className={`inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                transactionLimitState.isLimitExceeded
-                  ? "bg-red-500 hover:bg-red-600"
-                  : "bg-emerald-500 hover:bg-emerald-600"
-              }`}
-            >
-              {loading ? (
-                "Saving..."
-              ) : transactionLimitState.isLimitExceeded ? (
-                <>
-                  <Lock className="h-4 w-4" />
-                  Save Locked
-                </>
-              ) : (
-                "Save Transaction"
-              )}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );
