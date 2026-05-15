@@ -6,9 +6,9 @@ import type {
 } from "@/app/transactions/page";
 import { supabase } from "@/lib/supabase/client";
 import {
-  ArrowDownLeft,
-  ArrowUpRight,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Edit,
   Eye,
   Plus,
@@ -55,6 +55,15 @@ type FormState = {
   transaction_date: string;
 };
 
+type DailySummary = {
+  dateKey: string;
+  income: number;
+  expenses: number;
+  count: number;
+  hasIncome: boolean;
+  hasExpense: boolean;
+};
+
 const emptyForm: FormState = {
   type: "expense",
   amount: "",
@@ -72,11 +81,24 @@ function formatMoney(value: number | string) {
 }
 
 function formatDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+
   return new Intl.DateTimeFormat("en-PH", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(new Date(year, month - 1, day));
+}
+
+function formatLongDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+
+  return new Intl.DateTimeFormat("en-PH", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(year, month - 1, day));
 }
 
 function formatMonth(month: number, year: number) {
@@ -87,19 +109,32 @@ function formatMonth(month: number, year: number) {
 }
 
 function getTodayDate() {
-  return new Date().toISOString().slice(0, 10);
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function normalizeCategory(category: string | null | undefined) {
   return category?.trim() || "Uncategorized";
 }
 
+function getDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function getMonthYearFromDate(value: string) {
-  const date = new Date(value);
+  const [year, month] = value.split("-").map(Number);
 
   return {
-    month: date.getMonth() + 1,
-    year: date.getFullYear(),
+    month,
+    year,
   };
 }
 
@@ -113,6 +148,26 @@ function sortTransactions(items: Transaction[]) {
 
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
+}
+
+function buildMonthDays(month: number, year: number) {
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+  const leadingBlankDays = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+
+  return [
+    ...Array.from({ length: leadingBlankDays }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => {
+      const day = index + 1;
+      const date = new Date(year, month - 1, day);
+
+      return {
+        day,
+        dateKey: getDateKey(date),
+      };
+    }),
+  ];
 }
 
 export default function TransactionManager({
@@ -136,6 +191,13 @@ export default function TransactionManager({
     "all"
   );
   const [categoryFilter, setCategoryFilter] = useState("all");
+
+  const currentDate = new Date();
+  const [calendarMonth, setCalendarMonth] = useState(
+    currentDate.getMonth() + 1
+  );
+  const [calendarYear, setCalendarYear] = useState(currentDate.getFullYear());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] =
@@ -215,15 +277,63 @@ export default function TransactionManager({
     });
   }, [transactions, search, typeFilter, categoryFilter]);
 
-  const totalIncome = transactions
-    .filter((item) => item.type === "income")
-    .reduce((sum, item) => sum + Number(item.amount), 0);
+  const calendarDays = useMemo(() => {
+    return buildMonthDays(calendarMonth, calendarYear);
+  }, [calendarMonth, calendarYear]);
 
-  const totalExpenses = transactions
-    .filter((item) => item.type === "expense")
-    .reduce((sum, item) => sum + Number(item.amount), 0);
+  const dailySummaries = useMemo(() => {
+    const map = new Map<string, DailySummary>();
 
-  const netBalance = totalIncome - totalExpenses;
+    transactions.forEach((transaction) => {
+      const dateKey = transaction.transaction_date;
+      const existing = map.get(dateKey) ?? {
+        dateKey,
+        income: 0,
+        expenses: 0,
+        count: 0,
+        hasIncome: false,
+        hasExpense: false,
+      };
+
+      if (transaction.type === "income") {
+        existing.income += Number(transaction.amount);
+        existing.hasIncome = true;
+      } else {
+        existing.expenses += Number(transaction.amount);
+        existing.hasExpense = true;
+      }
+
+      existing.count += 1;
+      map.set(dateKey, existing);
+    });
+
+    return map;
+  }, [transactions]);
+
+  const selectedDateTransactions = useMemo(() => {
+    if (!selectedDate) return [];
+
+    return sortTransactions(
+      transactions.filter(
+        (transaction) => transaction.transaction_date === selectedDate
+      )
+    );
+  }, [selectedDate, transactions]);
+
+  const selectedDateSummary = useMemo(() => {
+    if (!selectedDate) return null;
+
+    return (
+      dailySummaries.get(selectedDate) ?? {
+        dateKey: selectedDate,
+        income: 0,
+        expenses: 0,
+        count: 0,
+        hasIncome: false,
+        hasExpense: false,
+      }
+    );
+  }, [selectedDate, dailySummaries]);
 
   function getBudgetForTransaction(transaction: Transaction) {
     if (transaction.type !== "expense") return null;
@@ -257,6 +367,33 @@ export default function TransactionManager({
         );
       })
       .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
+  }
+
+  function goToPreviousMonth() {
+    if (calendarMonth === 1) {
+      setCalendarMonth(12);
+      setCalendarYear((current) => current - 1);
+      return;
+    }
+
+    setCalendarMonth((current) => current - 1);
+  }
+
+  function goToNextMonth() {
+    if (calendarMonth === 12) {
+      setCalendarMonth(1);
+      setCalendarYear((current) => current + 1);
+      return;
+    }
+
+    setCalendarMonth((current) => current + 1);
+  }
+
+  function goToCurrentMonth() {
+    const today = new Date();
+
+    setCalendarMonth(today.getMonth() + 1);
+    setCalendarYear(today.getFullYear());
   }
 
   function openAddModal() {
@@ -520,8 +657,8 @@ export default function TransactionManager({
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Record income and expenses. Expense categories are connected to
-            saved Budgets, so custom budget categories appear here.
+            Record income and expenses. Use the calendar to review what happened
+            financially on a specific day.
           </p>
         </div>
 
@@ -535,32 +672,18 @@ export default function TransactionManager({
         </button>
       </div>
 
-      <section className="mb-6 grid gap-4 md:grid-cols-3">
-        <SummaryCard
-          title="Total Income"
-          value={formatMoney(totalIncome)}
-          helper="Income sources only"
-          icon={<ArrowDownLeft className="h-5 w-5" />}
-        />
+      <TransactionCalendarSummary
+        month={calendarMonth}
+        year={calendarYear}
+        days={calendarDays}
+        summaries={dailySummaries}
+        onPreviousMonth={goToPreviousMonth}
+        onNextMonth={goToNextMonth}
+        onCurrentMonth={goToCurrentMonth}
+        onSelectDate={setSelectedDate}
+      />
 
-        <SummaryCard
-          title="Total Expenses"
-          value={formatMoney(totalExpenses)}
-          helper="Connected to budget usage"
-          icon={<ArrowUpRight className="h-5 w-5" />}
-          danger={totalExpenses > totalIncome && totalIncome > 0}
-        />
-
-        <SummaryCard
-          title="Net Balance"
-          value={formatMoney(netBalance)}
-          helper="Income minus expenses"
-          icon={<CalendarDays className="h-5 w-5" />}
-          danger={netBalance < 0}
-        />
-      </section>
-
-      <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/20 backdrop-blur-xl">
+      <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-5">
         <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-white">
@@ -758,6 +881,15 @@ export default function TransactionManager({
         </div>
       </section>
 
+      {selectedDate && selectedDateSummary && (
+        <DailyTransactionModal
+          date={selectedDate}
+          summary={selectedDateSummary}
+          transactions={selectedDateTransactions}
+          onClose={() => setSelectedDate(null)}
+        />
+      )}
+
       {modalOpen && (
         <TransactionModal
           title={editingTransaction ? "Edit Transaction" : "Add Transaction"}
@@ -829,40 +961,377 @@ export default function TransactionManager({
   );
 }
 
-function SummaryCard({
-  title,
-  value,
-  helper,
-  icon,
-  danger = false,
+function TransactionCalendarSummary({
+  month,
+  year,
+  days,
+  summaries,
+  onPreviousMonth,
+  onNextMonth,
+  onCurrentMonth,
+  onSelectDate,
 }: {
-  title: string;
-  value: string;
-  helper: string;
-  icon: React.ReactNode;
-  danger?: boolean;
+  month: number;
+  year: number;
+  days: ({ day: number; dateKey: string } | null)[];
+  summaries: Map<string, DailySummary>;
+  onPreviousMonth: () => void;
+  onNextMonth: () => void;
+  onCurrentMonth: () => void;
+  onSelectDate: (date: string) => void;
 }) {
+  const today = getTodayDate();
+  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  const activeDaysCount = Array.from(summaries.values()).filter((summary) => {
+    const { month: summaryMonth, year: summaryYear } = getMonthYearFromDate(
+      summary.dateKey
+    );
+
+    return summaryMonth === month && summaryYear === year;
+  }).length;
+
   return (
-    <div
-      className={`rounded-3xl border p-5 shadow-2xl shadow-black/20 backdrop-blur-xl ${
-        danger
-          ? "border-red-500/20 bg-red-500/[0.04]"
-          : "border-white/10 bg-white/[0.04]"
-      }`}
-    >
-      <div
-        className={`mb-5 flex h-11 w-11 items-center justify-center rounded-2xl ${
-          danger
-            ? "bg-red-500/10 text-red-300"
-            : "bg-emerald-500/10 text-emerald-300"
-        }`}
-      >
-        {icon}
+    <section className="mb-6 rounded-3xl border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:p-5">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-300">
+            <CalendarDays className="h-5 w-5" />
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold text-white">
+              Transaction Calendar Summary
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Click any date to review that day’s income, expenses, and net
+              balance.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
+          <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-1">
+            <button
+              type="button"
+              onClick={onPreviousMonth}
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white"
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            <p className="min-w-40 text-center text-sm font-semibold text-white">
+              {formatMonth(month, year)}
+            </p>
+
+            <button
+              type="button"
+              onClick={onNextMonth}
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-300 transition hover:bg-white/10 hover:text-white"
+              aria-label="Next month"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={onCurrentMonth}
+            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 hover:text-white"
+          >
+            Today
+          </button>
+        </div>
       </div>
 
-      <p className="text-sm text-slate-400">{title}</p>
-      <h2 className="mt-2 text-2xl font-bold text-white">{value}</h2>
-      <p className="mt-2 text-xs text-slate-500">{helper}</p>
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs text-slate-500">Month</p>
+          <p className="mt-1 font-semibold text-white">
+            {formatMonth(month, year)}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs text-slate-500">Days with Records</p>
+          <p className="mt-1 font-semibold text-white">
+            {activeDaysCount} day{activeDaysCount === 1 ? "" : "s"}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs text-slate-500">Legend</p>
+          <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-300">
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              Income
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+              Expense
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-white/10">
+        <div className="grid grid-cols-7 bg-white/5 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
+          {weekDays.map((day) => (
+            <div key={day} className="px-2 py-3">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-7">
+          {days.map((day, index) => {
+            if (!day) {
+              return (
+                <div
+                  key={`blank-${index}`}
+                  className="min-h-20 border-t border-white/10 bg-white/[0.02] p-2 sm:min-h-24"
+                />
+              );
+            }
+
+            const summary = summaries.get(day.dateKey);
+            const isToday = day.dateKey === today;
+
+            return (
+              <button
+                key={day.dateKey}
+                type="button"
+                onClick={() => onSelectDate(day.dateKey)}
+                className={`group min-h-20 border-t border-white/10 p-2 text-left transition hover:bg-white/10 sm:min-h-24 ${
+                  isToday ? "bg-emerald-500/10" : "bg-white/[0.03]"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-1">
+                  <span
+                    className={`flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${
+                      isToday
+                        ? "bg-emerald-500 text-white"
+                        : "text-slate-300 group-hover:bg-white/10 group-hover:text-white"
+                    }`}
+                  >
+                    {day.day}
+                  </span>
+
+                  {summary && (
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                      {summary.count}
+                    </span>
+                  )}
+                </div>
+
+                {summary && (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      {summary.hasIncome && (
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                      )}
+                      {summary.hasExpense && (
+                        <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                      )}
+                    </div>
+
+                    <p className="hidden truncate text-[11px] text-slate-400 sm:block">
+                      Net{" "}
+                      <span
+                        className={
+                          summary.income - summary.expenses >= 0
+                            ? "text-emerald-300"
+                            : "text-red-300"
+                        }
+                      >
+                        {formatMoney(summary.income - summary.expenses)}
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DailyTransactionModal({
+  date,
+  summary,
+  transactions,
+  onClose,
+}: {
+  date: string;
+  summary: DailySummary;
+  transactions: Transaction[];
+  onClose: () => void;
+}) {
+  const incomeTransactions = transactions.filter(
+    (transaction) => transaction.type === "income"
+  );
+  const expenseTransactions = transactions.filter(
+    (transaction) => transaction.type === "expense"
+  );
+  const netBalance = summary.income - summary.expenses;
+
+  return (
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:flex sm:items-center sm:justify-center">
+      <div className="mx-auto my-4 w-full max-w-3xl rounded-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl shadow-black">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-emerald-400">
+              Daily Financial Review
+            </p>
+            <h2 className="mt-1 text-xl font-bold text-white">
+              {formatLongDate(date)}
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Showing income and expense records for this date only.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-400 transition hover:bg-white/10 hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mb-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+            <p className="text-xs text-emerald-200/80">Daily Income</p>
+            <p className="mt-1 text-lg font-bold text-emerald-300">
+              {formatMoney(summary.income)}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+            <p className="text-xs text-red-200/80">Daily Expenses</p>
+            <p className="mt-1 text-lg font-bold text-red-300">
+              {formatMoney(summary.expenses)}
+            </p>
+          </div>
+
+          <div
+            className={`rounded-2xl border p-4 ${
+              netBalance >= 0
+                ? "border-emerald-500/20 bg-emerald-500/10"
+                : "border-red-500/20 bg-red-500/10"
+            }`}
+          >
+            <p
+              className={`text-xs ${
+                netBalance >= 0 ? "text-emerald-200/80" : "text-red-200/80"
+              }`}
+            >
+              Daily Net Balance
+            </p>
+            <p
+              className={`mt-1 text-lg font-bold ${
+                netBalance >= 0 ? "text-emerald-300" : "text-red-300"
+              }`}
+            >
+              {formatMoney(netBalance)}
+            </p>
+          </div>
+        </div>
+
+        {transactions.length === 0 ? (
+          <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-10 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white/5 text-slate-400">
+              <CalendarDays className="h-6 w-6" />
+            </div>
+            <h3 className="mt-4 font-semibold text-white">
+              No records for this date
+            </h3>
+            <p className="mt-1 text-sm text-slate-400">
+              Add a transaction using this date to see it here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <DailyTransactionGroup
+              title="Income Transactions"
+              type="income"
+              items={incomeTransactions}
+            />
+
+            <DailyTransactionGroup
+              title="Expense Transactions"
+              type="expense"
+              items={expenseTransactions}
+            />
+          </div>
+        )}
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DailyTransactionGroup({
+  title,
+  type,
+  items,
+}: {
+  title: string;
+  type: "income" | "expense";
+  items: Transaction[];
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10">
+      <div className="border-b border-white/10 bg-white/5 px-4 py-3">
+        <h3 className="font-semibold text-white">{title}</h3>
+        <p className="text-xs text-slate-400">
+          {items.length} record{items.length === 1 ? "" : "s"}
+        </p>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="px-4 py-8 text-center text-sm text-slate-400">
+          No {type} records for this date.
+        </div>
+      ) : (
+        <div className="max-h-[40vh] overflow-y-auto">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className="flex flex-col gap-2 border-t border-white/10 px-4 py-4 first:border-t-0 sm:flex-row sm:items-start sm:justify-between"
+            >
+              <div>
+                <p className="font-semibold text-white">{item.category}</p>
+                <p className="mt-1 text-sm text-slate-400">
+                  {item.note || "No note"}
+                </p>
+              </div>
+
+              <p
+                className={`font-bold ${
+                  type === "income" ? "text-emerald-300" : "text-red-300"
+                }`}
+              >
+                {type === "income" ? "+" : "-"}
+                {formatMoney(item.amount)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -976,7 +1445,9 @@ function TransactionModal({
             >
               {activeCategories.map((category) => (
                 <option key={category} value={category}>
-                  {category === "Other" ? "Other / Add custom category" : category}
+                  {category === "Other"
+                    ? "Other / Add custom category"
+                    : category}
                 </option>
               ))}
             </select>
@@ -1156,7 +1627,8 @@ function BudgetConnectionModal({
               </div>
 
               <p className="mt-2 text-sm text-slate-400">
-                Used {formatMoney(usedAmount)} out of {formatMoney(budgetAmount)}.
+                Used {formatMoney(usedAmount)} out of{" "}
+                {formatMoney(budgetAmount)}.
               </p>
             </div>
 
