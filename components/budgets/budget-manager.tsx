@@ -24,7 +24,6 @@ import { toast } from "sonner";
 type BudgetStatus = "all" | "safe" | "warning" | "exceeded";
 
 type FormState = {
-  category: string;
   amount: string;
 };
 
@@ -80,7 +79,6 @@ const monthOptions = [
 ];
 
 const emptyForm: FormState = {
-  category: "Food",
   amount: "",
 };
 
@@ -121,7 +119,7 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function normalizeCategory(category: string | null | undefined) {
+function normalizeCategory(category: string | null) {
   return category?.trim() || "Uncategorized";
 }
 
@@ -205,7 +203,6 @@ export default function BudgetManager({
   const [loading, setLoading] = useState(false);
 
   const currentYear = getCurrentYear();
-
   const { monthStart, monthEnd } = getMonthRange(selectedMonth, selectedYear);
 
   // Calculate totals
@@ -306,6 +303,15 @@ export default function BudgetManager({
   const warningCount = useMemo(() => budgetRows.filter((item) => item.status.key === "warning").length, [budgetRows]);
   const exceededCount = useMemo(() => budgetRows.filter((item) => item.status.key === "exceeded").length, [budgetRows]);
 
+  // Get max allowed amount for editing
+  const getMaxEditAmount = useCallback((editingBudgetId?: string) => {
+    const currentAllocationExcludingEdit = budgets.reduce((sum, budget) => {
+      if (editingBudgetId && budget.id === editingBudgetId) return sum;
+      return sum + Number(budget.amount);
+    }, 0);
+    return totalIncome - currentAllocationExcludingEdit;
+  }, [budgets, totalIncome]);
+
   // Load complete month data
   const loadMonth = useCallback(async (month: number, year: number) => {
     setLoading(true);
@@ -372,19 +378,20 @@ export default function BudgetManager({
       return;
     }
     setEditingBudget(null);
-    setForm({
-      category: categoryOptions[0] ?? "Food",
-      amount: "",
-    });
+    setForm({ amount: "" });
     setModalOpen(true);
   }
 
   function openEditModal(budget: Budget) {
+    const maxAmount = getMaxEditAmount(budget.id);
+    if (Number(budget.amount) > maxAmount) {
+      toast.error("Cannot edit", {
+        description: `This budget exceeds available income. Please delete and recreate it.`,
+      });
+      return;
+    }
     setEditingBudget(budget);
-    setForm({
-      category: normalizeCategory(budget.category),
-      amount: String(budget.amount),
-    });
+    setForm({ amount: String(budget.amount) });
     setModalOpen(true);
   }
 
@@ -393,14 +400,6 @@ export default function BudgetManager({
     setModalOpen(false);
     setEditingBudget(null);
     setForm(emptyForm);
-  }
-
-  function handleCategoryChange(category: string) {
-    if (category === "Other") {
-      setCustomCategoryModalOpen(true);
-      return;
-    }
-    setForm((current) => ({ ...current, category }));
   }
 
   function addCustomCategory() {
@@ -414,7 +413,6 @@ export default function BudgetManager({
       return;
     }
     setCustomCategories((current) => [...current, category].sort((a, b) => a.localeCompare(b)));
-    setForm((current) => ({ ...current, category }));
     setNewCategory("");
     setCustomCategoryModalOpen(false);
     toast.success("Category added");
@@ -422,56 +420,34 @@ export default function BudgetManager({
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const category = form.category.trim();
     const amount = Number(form.amount);
-
-    if (!category || category === "Other") {
-      toast.error("Please select a valid category");
-      return;
-    }
 
     if (!amount || amount <= 0) {
       toast.error("Budget amount must be greater than zero");
       return;
     }
 
-    // STRICT INCOME VALIDATION
-    const currentAllocationExcludingEdit = budgets.reduce((sum, budget) => {
-      if (editingBudget && budget.id === editingBudget.id) return sum;
-      return sum + Number(budget.amount);
-    }, 0);
+    if (editingBudget) {
+      // EDIT MODE - only validate amount against remaining allocation
+      const maxAmount = getMaxEditAmount(editingBudget.id);
+      
+      if (amount > maxAmount) {
+        const overBy = amount - maxAmount;
+        toast.error("Amount exceeds income limit", {
+          description: `New amount exceeds available income by ${formatMoney(overBy)}. Maximum allowed: ${formatMoney(maxAmount)}`,
+        });
+        return;
+      }
 
-    const newTotalAllocation = currentAllocationExcludingEdit + amount;
-    
-    if (newTotalAllocation > totalIncome) {
-      const overBy = newTotalAllocation - totalIncome;
-      toast.error("Budget exceeds income limit", {
-        description: `This budget would exceed your income by ${formatMoney(overBy)}. Maximum available: ${formatMoney(totalIncome - currentAllocationExcludingEdit)}`,
-      });
-      return;
-    }
-
-    // Check for duplicate
-    const duplicateBudget = budgets.find(
-      (budget) =>
-        budget.id !== editingBudget?.id &&
-        normalizeCategory(budget.category).toLowerCase() === category.toLowerCase() &&
-        budget.month === selectedMonth &&
-        budget.year === selectedYear
-    );
-
-    if (duplicateBudget) {
-      toast.error("Budget already exists for this category");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      if (editingBudget) {
+      setLoading(true);
+      try {
         const { data, error } = await supabase
           .from("budgets")
-          .update({ category, amount, month: selectedMonth, year: selectedYear })
+          .update({ 
+            amount,
+            month: selectedMonth, 
+            year: selectedYear 
+          })
           .eq("id", editingBudget.id)
           .eq("user_id", userId)
           .select()
@@ -484,8 +460,32 @@ export default function BudgetManager({
             .map((item) => (item.id === editingBudget.id ? data : item))
             .sort((a, b) => normalizeCategory(a.category).localeCompare(normalizeCategory(b.category)))
         );
-        toast.success("Budget updated successfully");
-      } else {
+        toast.success("Budget amount updated successfully");
+        closeModal();
+        router.refresh();
+      } catch (error: any) {
+        toast.error("Failed to update budget", { description: error.message });
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // ADD MODE - full validation
+      if (!canAddBudget) {
+        toast.error("No remaining allocation");
+        return;
+      }
+
+      const category = categoryOptions.find(cat => cat.toLowerCase() === "other") ? "Other" : categoryOptions[0];
+      
+      if (amount > remainingBudgetAllocation) {
+        toast.error("Amount exceeds remaining allocation", {
+          description: `Maximum available: ${formatMoney(remainingBudgetAllocation)}`,
+        });
+        return;
+      }
+
+      setLoading(true);
+      try {
         const { data, error } = await supabase
           .from("budgets")
           .insert({
@@ -504,14 +504,13 @@ export default function BudgetManager({
           [...current, data].sort((a, b) => normalizeCategory(a.category).localeCompare(normalizeCategory(b.category)))
         );
         toast.success("Budget created successfully");
+        closeModal();
+        router.refresh();
+      } catch (error: any) {
+        toast.error("Failed to create budget", { description: error.message });
+      } finally {
+        setLoading(false);
       }
-
-      closeModal();
-      router.refresh();
-    } catch (error: any) {
-      toast.error("Failed to save budget", { description: error.message });
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -761,8 +760,10 @@ export default function BudgetManager({
                     <button
                       type="button"
                       onClick={() => openEditModal(budget)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition-all hover:bg-white/10 hover:text-white"
-                      aria-label="Edit"
+                      disabled={loading || Number(budget.amount) > getMaxEditAmount(budget.id)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition-all hover:bg-white/10 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={Number(budget.amount) > getMaxEditAmount(budget.id) ? "Exceeds income limit" : "Edit amount"}
+                      aria-label="Edit amount"
                     >
                       <Edit className="h-4 w-4" />
                     </button>
@@ -785,19 +786,20 @@ export default function BudgetManager({
       {/* Modals */}
       {modalOpen && (
         <BudgetModal
-          title={editingBudget ? "Edit Budget" : "Add Budget"}
+          title={editingBudget ? `Edit ${normalizeCategory(editingBudget.category)} Budget` : "Add Budget"}
+          budget={editingBudget}
           form={form}
           setForm={setForm}
           categoryOptions={categoryOptions}
           totalIncome={totalIncome}
           totalBudgetAllocation={totalBudgetAllocation}
           remainingBudgetAllocation={remainingBudgetAllocation}
+          maxEditAmount={editingBudget ? getMaxEditAmount(editingBudget.id) : remainingBudgetAllocation}
           selectedMonth={selectedMonth}
           selectedYear={selectedYear}
           loading={loading}
           onClose={closeModal}
           onSubmit={handleSubmit}
-          onCategoryChange={handleCategoryChange}
         />
       )}
 
@@ -891,33 +893,40 @@ function SummaryCard({
 
 function BudgetModal({
   title,
+  budget,
   form,
   setForm,
   categoryOptions,
   totalIncome,
   totalBudgetAllocation,
   remainingBudgetAllocation,
+  maxEditAmount,
   selectedMonth,
   selectedYear,
   loading,
   onClose,
   onSubmit,
-  onCategoryChange,
 }: {
   title: string;
+  budget?: Budget | null;
   form: FormState;
   setForm: Dispatch<SetStateAction<FormState>>;
   categoryOptions: string[];
   totalIncome: number;
   totalBudgetAllocation: number;
   remainingBudgetAllocation: number;
+  maxEditAmount: number;
   selectedMonth: number;
   selectedYear: number;
   loading: boolean;
   onClose: () => void;
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
-  onCategoryChange: (category: string) => void;
 }) {
+  const isEditMode = !!budget;
+  const currentAmount = budget ? Number(budget.amount) : 0;
+  const newAmount = Number(form.amount) || 0;
+  const amountChange = newAmount - currentAmount;
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm transition-opacity">
       <div className="flex min-h-screen items-center justify-center p-4">
@@ -926,7 +935,17 @@ function BudgetModal({
             <div>
               <h2 className="text-2xl font-bold text-white">{title}</h2>
               <p className="mt-1 text-sm text-slate-400">
-                {formatMonth(selectedMonth, selectedYear)} • Max available: {formatMoney(remainingBudgetAllocation)}
+                {formatMonth(selectedMonth, selectedYear)} • Max available: {formatMoney(maxEditAmount)}
+                {isEditMode && (
+                  <span className={`ml-2 inline-block rounded-full px-2 py-1 text-xs font-semibold ${
+                    amountChange > 0 ? 'bg-emerald-500/20 text-emerald-300' : 
+                    amountChange < 0 ? 'bg-red-500/20 text-red-300' : 
+                    'bg-slate-500/20 text-slate-300'
+                  }`}>
+                    {amountChange > 0 ? `+${formatMoney(amountChange)}` : 
+                     amountChange < 0 ? formatMoney(amountChange) : 'No change'}
+                  </span>
+                )}
               </p>
             </div>
             <button
@@ -939,30 +958,25 @@ function BudgetModal({
           </div>
 
           <form onSubmit={onSubmit} className="space-y-5">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-slate-300">Category</label>
-              <select
-                value={form.category}
-                onChange={(e) => onCategoryChange(e.target.value)}
-                disabled={loading}
-                required
-                className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-4 focus:ring-emerald-500/20 disabled:opacity-50"
-              >
-                {categoryOptions.map((category) => (
-                  <option key={category} value={category}>
-                    {category === "Other" ? "➕ Other / Custom category" : category}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {isEditMode && (
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                <p className="text-xs font-medium text-emerald-300">Category</p>
+                <p className="mt-1 text-lg font-bold text-white">{normalizeCategory(budget!.category)}</p>
+                <p className="mt-1 text-xs text-emerald-200/80">
+                  Category cannot be changed. Use "Delete" + "Add New" to change category.
+                </p>
+              </div>
+            )}
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-300">Amount</label>
+              <label className="mb-2 block text-sm font-medium text-slate-300">
+                {isEditMode ? "New Amount" : "Amount"}
+              </label>
               <input
                 type="number"
                 min="0.01"
                 step="0.01"
-                max={remainingBudgetAllocation}
+                max={maxEditAmount}
                 value={form.amount}
                 onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
                 placeholder="0.00"
@@ -970,6 +984,11 @@ function BudgetModal({
                 required
                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white placeholder:text-slate-500 transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-4 focus:ring-emerald-500/20 disabled:opacity-50"
               />
+              {isEditMode && (
+                <p className="mt-1 text-xs text-slate-400">
+                  Current: {formatMoney(currentAmount)} • Max: {formatMoney(maxEditAmount)}
+                </p>
+              )}
             </div>
 
             {/* Income Summary */}
@@ -1001,10 +1020,10 @@ function BudgetModal({
               </button>
               <button
                 type="submit"
-                disabled={loading || Number(form.amount) > remainingBudgetAllocation}
+                disabled={loading || newAmount === 0 || newAmount > maxEditAmount}
                 className="rounded-2xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/25 transition-all hover:bg-emerald-600 hover:shadow-emerald-500/40 disabled:cursor-not-allowed disabled:bg-emerald-500/50 disabled:shadow-none"
               >
-                {loading ? "Saving..." : "Save Budget"}
+                {loading ? "Saving..." : isEditMode ? "Update Amount" : "Create Budget"}
               </button>
             </div>
           </form>
