@@ -549,15 +549,7 @@ export default function BudgetManager({
             Allocate your income to spending categories. Total budgets cannot exceed monthly income.
           </p>
         </div>
-        <button
-          onClick={openAddModal}
-          disabled={!canAddBudget || loading}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-emerald-500/50 disabled:shadow-none"
-          title={!canAddBudget ? "No remaining budget allocation available" : ""}
-        >
-          <Plus className="h-4 w-4" />
-          Add Budget
-        </button>
+       
       </div>
 
       {/* Warnings */}
