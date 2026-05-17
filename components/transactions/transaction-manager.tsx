@@ -803,7 +803,7 @@ export default function TransactionManager({
           </p>
 
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Transactions
+            Expenses
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
