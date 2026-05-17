@@ -28,7 +28,7 @@ const navItems = [
     icon: BarChart3,
   },
   {
-    label: "Expenses",
+    label: "Transaction",
     href: "/transactions",
     icon: Wallet,
   },
