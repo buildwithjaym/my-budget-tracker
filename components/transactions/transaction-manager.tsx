@@ -18,9 +18,6 @@ import {
   Trash2,
   WalletCards,
   X,
-  CheckCircle,    
-  Check,          
-  Loader2,       
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -219,7 +216,8 @@ export default function TransactionManager({
   const [calendarYear, setCalendarYear] = useState(currentDate.getFullYear());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const [modalOpen, setModalOpen] = useState(false);
+  const [incomeModalOpen, setIncomeModalOpen] = useState(false);
+  const [expenseModalOpen, setExpenseModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] =
     useState<Transaction | null>(null);
 
@@ -525,7 +523,20 @@ export default function TransactionManager({
     setCalendarYear(today.getFullYear());
   }
 
-  function openAddModal() {
+  function openAddIncomeModal() {
+    setEditingTransaction(null);
+    setForm({
+      type: "income",
+      amount: "",
+      category: incomeSources[0],
+      note: "",
+      transaction_date: getTodayDate(),
+    });
+    setExpenseModalOpen(false);
+    setIncomeModalOpen(true);
+  }
+
+  function openAddExpenseModal() {
     setEditingTransaction(null);
     setForm({
       type: "expense",
@@ -534,7 +545,8 @@ export default function TransactionManager({
       note: "",
       transaction_date: getTodayDate(),
     });
-    setModalOpen(true);
+    setIncomeModalOpen(false);
+    setExpenseModalOpen(true);
   }
 
   function openEditModal(transaction: Transaction) {
@@ -546,23 +558,24 @@ export default function TransactionManager({
       note: transaction.note ?? "",
       transaction_date: transaction.transaction_date,
     });
-    setModalOpen(true);
+
+    if (transaction.type === "income") {
+      setExpenseModalOpen(false);
+      setIncomeModalOpen(true);
+      return;
+    }
+
+    setIncomeModalOpen(false);
+    setExpenseModalOpen(true);
   }
 
   function closeModal() {
     if (loading) return;
 
-    setModalOpen(false);
+    setIncomeModalOpen(false);
+    setExpenseModalOpen(false);
     setEditingTransaction(null);
     setForm(emptyForm);
-  }
-
-  function handleTypeChange(type: "income" | "expense") {
-    setForm((current) => ({
-      ...current,
-      type,
-      category: type === "income" ? incomeSources[0] : expenseCategories[0],
-    }));
   }
 
   function handleCategoryChange(category: string) {
@@ -623,7 +636,7 @@ export default function TransactionManager({
   const isExpenseLockedGlobally = totalIncome <= totalExpenses;
   if (form.type === "expense" && isExpenseLockedGlobally) {
     toast.error("Expenses Locked", {
-      description: `Total income (₱${formatMoney(totalIncome)}) ≤ total expenses (₱${formatMoney(totalExpenses)}). Add income first.`,
+      description: `Total income (${formatMoney(totalIncome)}) ≤ total expenses (${formatMoney(totalExpenses)}). Add income first.`,
       duration: 6000,
     });
     return;
@@ -753,7 +766,8 @@ export default function TransactionManager({
     }
 
     setLoading(false);
-    setModalOpen(false);
+    setIncomeModalOpen(false);
+    setExpenseModalOpen(false);
     setEditingTransaction(null);
     setForm(emptyForm);
     router.refresh();
@@ -812,14 +826,25 @@ export default function TransactionManager({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={openAddModal}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-600"
-        >
-          <Plus className="h-4 w-4" />
-          Add Transaction
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={openAddIncomeModal}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-600"
+          >
+            <Plus className="h-4 w-4" />
+            Add Income
+          </button>
+
+          <button
+            type="button"
+            onClick={openAddExpenseModal}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-red-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/20 transition hover:bg-red-600"
+          >
+            <Plus className="h-4 w-4" />
+            Add Expense
+          </button>
+        </div>
       </div>
 
       <TransactionCalendarSummary
@@ -1040,9 +1065,10 @@ export default function TransactionManager({
         />
       )}
 
-      {modalOpen && (
+      {incomeModalOpen && (
         <TransactionModal
-          title={editingTransaction ? "Edit Transaction" : "Add Transaction"}
+          title={editingTransaction ? "Edit Income" : "Add Income"}
+          isEditing={Boolean(editingTransaction)}
           form={form}
           setForm={setForm}
           loading={loading}
@@ -1051,7 +1077,22 @@ export default function TransactionManager({
           transactionLimitState={transactionLimitState}
           onClose={closeModal}
           onSubmit={handleSubmit}
-          onTypeChange={handleTypeChange}
+          onCategoryChange={handleCategoryChange}
+        />
+      )}
+
+      {expenseModalOpen && (
+        <TransactionModal
+          title={editingTransaction ? "Edit Expense" : "Add Expense"}
+          isEditing={Boolean(editingTransaction)}
+          form={form}
+          setForm={setForm}
+          loading={loading}
+          matchingBudget={matchingBudget}
+          expenseCategories={expenseCategories}
+          transactionLimitState={transactionLimitState}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
           onCategoryChange={handleCategoryChange}
         />
       )}
@@ -1488,6 +1529,7 @@ function DailyTransactionGroup({
 }
 function TransactionModal({
   title,
+  isEditing,
   form,
   setForm,
   loading,
@@ -1496,10 +1538,10 @@ function TransactionModal({
   transactionLimitState,
   onClose,
   onSubmit,
-  onTypeChange,
   onCategoryChange,
 }: {
   title: string;
+  isEditing: boolean;
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   loading: boolean;
@@ -1508,7 +1550,6 @@ function TransactionModal({
   transactionLimitState: TransactionLimitState;
   onClose: () => void;
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
-  onTypeChange: (type: "income" | "expense") => void;
   onCategoryChange: (category: string) => void;
 }) {
   const activeCategories =
@@ -1549,33 +1590,22 @@ function TransactionModal({
         <div className="overflow-y-auto px-5 py-5 sm:px-6">
           <form onSubmit={onSubmit} className="space-y-5">
 
-            {/* TYPE SWITCH */}
-            <div className="grid grid-cols-2 gap-3 rounded-2xl bg-white/5 p-1">
-              <button
-                type="button"
-                onClick={() => onTypeChange("income")}
-                disabled={loading}
-                className={`rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60 ${
-                  form.type === "income"
-                    ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Income
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onTypeChange("expense")}
-                disabled={loading}
-                className={`rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60 ${
-                  form.type === "expense"
-                    ? "bg-red-500 text-white shadow-lg shadow-red-500/20"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Expense
-              </button>
+            {/* FIXED TRANSACTION TYPE */}
+            <div
+              className={`rounded-2xl border p-4 ${
+                form.type === "income"
+                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                  : "border-red-500/20 bg-red-500/10 text-red-200"
+              }`}
+            >
+              <p className="text-sm font-semibold">
+                {form.type === "income" ? "Income Form" : "Expense Form"}
+              </p>
+              <p className="mt-1 text-xs opacity-90">
+                {form.type === "income"
+                  ? "This modal is only for income records. Use Add Expense for expenses."
+                  : "This modal is only for expense records. Use Add Income for income."}
+              </p>
             </div>
 
             {/* MAIN GRID */}
@@ -1853,8 +1883,10 @@ function TransactionModal({
                     <Lock className="h-4 w-4" />
                     Save Locked
                   </>
+                ) : isEditing ? (
+                  `Update ${form.type === "income" ? "Income" : "Expense"}`
                 ) : (
-                  "Save Transaction"
+                  `Save ${form.type === "income" ? "Income" : "Expense"}`
                 )}
               </button>
             </div>
