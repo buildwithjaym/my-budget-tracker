@@ -581,7 +581,7 @@ export default function BudgetManager({
           emphasis
         />
         <SummaryCard
-          title="Expenses"
+          title="Total Budget Allocation"
           value={formatMoney(totalBudgetAllocation)}
           helper={`${((totalBudgetAllocation / totalIncome) * 100 || 0).toFixed(1)}% of income allocated`}
           icon={<Target className="h-5 w-5" />}
